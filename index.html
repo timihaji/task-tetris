@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -23,6 +23,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
 <script type="text/babel" data-presets="react">
+;(function() {
 
 // tweaks-panel.jsx
 // Reusable Tweaks shell + form-control helpers.
@@ -449,9 +450,11 @@ Object.assign(window, {
   TweakText, TweakNumber, TweakColor, TweakButton,
 });
 
+}());
 </script>
 
 <script type="text/babel" data-presets="react">
+;(function() {
 // physics.jsx — verlet-style AABB physics + dependency tracking
 // Custom engine because:
 // - We need axis-aligned rigid rects with stable resting stacks (Matter's circular contacts add rotation we don't want)
@@ -724,9 +727,11 @@ class PhysicsWorld {
 window.PhysicsWorld = PhysicsWorld;
 window.PHYS = PHYS;
 
+}());
 </script>
 
 <script type="text/babel" data-presets="react">
+;(function() {
 // data.jsx — initial task set, tag definitions, palettes
 
 // ── Grid ─────────────────────────────────────────────────────────────────────
@@ -832,9 +837,11 @@ window.SIZE_PRESETS = SIZE_PRESETS;
 window.PALETTES = PALETTES;
 window.INITIAL_TASKS = INITIAL_TASKS;
 
+}());
 </script>
 
 <script type="text/babel" data-presets="react">
+;(function() {
 // app.jsx — themes, block, context menu, group label, palette/tag manager
 
 const { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakRadio, TweakToggle, TweakButton, TweakSelect } = window;
@@ -1789,9 +1796,11 @@ window.luminance = luminance;
 window.formatShortcut = formatShortcut;
 window.TWEAK_DEFAULTS = TWEAK_DEFAULTS;
 
+}());
 </script>
 
 <script type="text/babel" data-presets="react">
+;(function() {
 // scene.jsx — main scene wiring physics + interactions + grid snapping
 
 const {
@@ -3277,6 +3286,7 @@ function HelpOverlay({ theme, isDark, onClose, gridSize }) {
 
 window.Scene = Scene;
 
+}());
 </script>
 
 <script type="text/babel" data-presets="react">
