@@ -1,0 +1,3287 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task Tetris</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0e1320; }
+  body { font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif; }
+  #root { width: 100vw; height: 100vh; }
+  *:focus-visible { outline-offset: 2px; }
+  body { -webkit-tap-highlight-color: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="react">
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">{children}</div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+function TweakColor({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <input type="color" className="twk-swatch" value={value}
+             onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// physics.jsx — verlet-style AABB physics + dependency tracking
+// Custom engine because:
+// - We need axis-aligned rigid rects with stable resting stacks (Matter's circular contacts add rotation we don't want)
+// - We need to know which blocks rest ON which other blocks each frame for dependency math
+// - Wobble/squash on impact is simulated via a separate visual "deform" channel, not real soft-body
+
+const PHYS = {
+  GRAVITY: 1800,        // px/s^2
+  DAMPING: 0.985,       // velocity multiplier per second of "air"
+  REST_EPS: 4,          // velocity below this counts as "at rest"
+  MAX_DT: 1 / 30,
+  SUB_STEPS: 4,         // collision iterations per frame
+  WALL_BOUNCE: 0.18,
+  FLOOR_BOUNCE: 0.22,
+  BLOCK_BOUNCE: 0.08,
+  FRICTION: 0.82,       // tangential velocity multiplier on contact
+};
+
+class PhysicsWorld {
+  constructor(width, height) {
+    this.w = width;
+    this.h = height;
+    this.bodies = new Map(); // id -> body
+    this.gravityOn = true;
+    this.snapEnabled = false;
+    this.gridSize = 20;
+    this.onSettle = null;
+  }
+
+  setBounds(w, h) { this.w = w; this.h = h; }
+
+  add(body) {
+    // body: { id, x, y, w, h, vx, vy, mass, fixed, ax, ay (angle for visual wobble) }
+    const b = {
+      vx: 0, vy: 0, ax: 0, av: 0, mass: 1, fixed: false,
+      restingOn: new Set(), supports: new Set(),
+      sleepFrames: 0, justImpacted: 0, deform: 0, deformV: 0,
+      ...body,
+    };
+    this.bodies.set(b.id, b);
+    return b;
+  }
+
+  remove(id) {
+    const b = this.bodies.get(id);
+    if (!b) return;
+    // Anything resting on this body needs to unstick
+    for (const sup of b.supports) {
+      const s = this.bodies.get(sup);
+      if (s) s.restingOn.delete(id);
+    }
+    for (const r of b.restingOn) {
+      const o = this.bodies.get(r);
+      if (o) o.supports.delete(id);
+    }
+    this.bodies.delete(id);
+  }
+
+  get(id) { return this.bodies.get(id); }
+
+  // AABB overlap (returns penetration + axis)
+  _overlap(a, b) {
+    const ax1 = a.x, ay1 = a.y, ax2 = a.x + a.w, ay2 = a.y + a.h;
+    const bx1 = b.x, by1 = b.y, bx2 = b.x + b.w, by2 = b.y + b.h;
+    const ox = Math.min(ax2, bx2) - Math.max(ax1, bx1);
+    const oy = Math.min(ay2, by2) - Math.max(ay1, by1);
+    if (ox <= 0 || oy <= 0) return null;
+    return { ox, oy };
+  }
+
+  step(dt) {
+    dt = Math.min(dt, PHYS.MAX_DT);
+    const bodies = [...this.bodies.values()];
+
+    // 1. Integrate
+    for (const b of bodies) {
+      // Visual deform spring (not part of collision)
+      b.deformV += (-b.deform * 60 - b.deformV * 8) * dt;
+      b.deform += b.deformV * dt;
+
+      if (b.fixed || b.dragging) continue;
+      if (this.gravityOn) b.vy += PHYS.GRAVITY * dt;
+      // Air damping
+      const damp = Math.pow(PHYS.DAMPING, dt * 60);
+      b.vx *= damp;
+      b.vy *= damp;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+    }
+
+    // 2. Collide (multiple iterations for stable stacking)
+    for (let iter = 0; iter < PHYS.SUB_STEPS; iter++) {
+      // Walls + floor
+      for (const b of bodies) {
+        if (b.fixed) continue;
+        if (b.x < 0) { b.x = 0; if (b.vx < 0) b.vx = -b.vx * PHYS.WALL_BOUNCE; }
+        if (b.x + b.w > this.w) { b.x = this.w - b.w; if (b.vx > 0) b.vx = -b.vx * PHYS.WALL_BOUNCE; }
+        if (b.y + b.h > this.h) {
+          const impactV = b.vy;
+          b.y = this.h - b.h;
+          if (b.vy > 0) {
+            if (impactV > 200) {
+              b.deformV -= Math.min(impactV * 0.002, 0.5);
+              b.justImpacted = 1;
+            }
+            b.vy = -b.vy * PHYS.FLOOR_BOUNCE;
+            b.vx *= PHYS.FRICTION;
+          }
+        }
+        if (b.y < 0) { b.y = 0; if (b.vy < 0) b.vy = -b.vy * PHYS.WALL_BOUNCE; }
+      }
+
+      // Body-body
+      for (let i = 0; i < bodies.length; i++) {
+        const a = bodies[i];
+        for (let j = i + 1; j < bodies.length; j++) {
+          const c = bodies[j];
+          if (a.fixed && c.fixed) continue;
+          if (a.dragging && c.dragging) continue;
+          const ov = this._overlap(a, c);
+          if (!ov) continue;
+
+          // Resolve along the smallest axis
+          if (ov.ox < ov.oy) {
+            // Horizontal separation
+            const dir = (a.x + a.w / 2) < (c.x + c.w / 2) ? -1 : 1;
+            const totalMass = (a.fixed || a.dragging ? 0 : 1) + (c.fixed || c.dragging ? 0 : 1);
+            if (totalMass === 0) continue;
+            if (a.fixed || a.dragging) {
+              c.x -= dir * ov.ox;
+              c.vx = -c.vx * PHYS.BLOCK_BOUNCE;
+            } else if (c.fixed || c.dragging) {
+              a.x += dir * ov.ox;
+              a.vx = -a.vx * PHYS.BLOCK_BOUNCE;
+            } else {
+              a.x += dir * ov.ox / 2;
+              c.x -= dir * ov.ox / 2;
+              const rel = a.vx - c.vx;
+              if ((dir < 0 && rel > 0) || (dir > 0 && rel < 0)) {
+                const e = PHYS.BLOCK_BOUNCE;
+                const newRel = -rel * e;
+                a.vx = (a.vx + c.vx) / 2 + newRel / 2 * (dir < 0 ? 1 : -1);
+                c.vx = (a.vx + c.vx) / 2 - newRel / 2 * (dir < 0 ? 1 : -1);
+              }
+            }
+          } else {
+            // Vertical separation
+            const aBottom = a.y + a.h, cTop = c.y;
+            const aOnTop = (a.y + a.h / 2) < (c.y + c.h / 2);
+            if (aOnTop) {
+              // a sits on c
+              if (!a.fixed && !a.dragging) {
+                a.y -= ov.oy;
+                if (a.vy > 0) {
+                  if (a.vy > 200) { a.deformV -= Math.min(a.vy * 0.0015, 0.4); }
+                  a.vy = -a.vy * PHYS.BLOCK_BOUNCE;
+                }
+                a.vx *= PHYS.FRICTION;
+              } else if (!c.fixed && !c.dragging) {
+                c.y += ov.oy;
+                if (c.vy < 0) c.vy = -c.vy * PHYS.BLOCK_BOUNCE;
+              }
+            } else {
+              // c sits on a
+              if (!c.fixed && !c.dragging) {
+                c.y -= ov.oy;
+                if (c.vy > 0) {
+                  if (c.vy > 200) { c.deformV -= Math.min(c.vy * 0.0015, 0.4); }
+                  c.vy = -c.vy * PHYS.BLOCK_BOUNCE;
+                }
+                c.vx *= PHYS.FRICTION;
+              } else if (!a.fixed && !a.dragging) {
+                a.y += ov.oy;
+                if (a.vy < 0) a.vy = -a.vy * PHYS.BLOCK_BOUNCE;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Recompute resting relationships
+    for (const b of bodies) {
+      b.restingOn.clear();
+      b.supports.clear();
+    }
+    const TOL = 2;
+    for (let i = 0; i < bodies.length; i++) {
+      const a = bodies[i];
+      // resting on floor
+      if (Math.abs((a.y + a.h) - this.h) < TOL && Math.abs(a.vy) < 30) {
+        // a is on the floor
+      }
+      for (let j = 0; j < bodies.length; j++) {
+        if (i === j) continue;
+        const c = bodies[j];
+        // a resting on c if a's bottom ≈ c's top AND they overlap horizontally
+        if (Math.abs((a.y + a.h) - c.y) < TOL) {
+          const ox = Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x);
+          if (ox > 2) {
+            a.restingOn.add(c.id);
+            c.supports.add(a.id);
+          }
+        }
+      }
+    }
+
+    // 4. Visual: decay justImpacted flag
+    for (const b of bodies) {
+      if (b.justImpacted > 0) b.justImpacted = Math.max(0, b.justImpacted - dt * 4);
+    }
+
+    // 5. Snap settled bodies to grid (hard snap once at rest, with one-frame
+    // animation flag so the visual jump is eased by CSS). After snapping, hold
+    // the body in place so gravity-induced micro-bounces don't drift it off-grid.
+    if (this.snapEnabled) {
+      const g = this.gridSize;
+      for (const b of bodies) {
+        if (b.fixed || b.dragging) continue;
+        // Clear stale snap-anim flag so it only fires the frame we snap.
+        if (b._snapAnimAt && performance.now() - b._snapAnimAt > 240) {
+          b.snapAnim = false;
+          b._snapAnimAt = 0;
+        }
+        const speed = Math.abs(b.vx) + Math.abs(b.vy);
+        const onSomething = (b.restingOn && b.restingOn.size > 0)
+          || Math.abs((b.y + b.h) - this.h) < 2;
+        // Wake the body if it's been disturbed (pushed, dragged, or thrown).
+        if (b._snapped && (!onSomething || speed > 120)) {
+          b._snapped = false;
+          b.restFrames = 0;
+        }
+        if (speed < 60 && onSomething) {
+          b.restFrames = (b.restFrames || 0) + 1;
+        } else {
+          b.restFrames = 0;
+        }
+        if (b.restFrames >= 3) {
+          const tx = Math.round(b.x / g) * g;
+          // For y, align block bottom to a grid offset measured from the floor.
+          const bottomGap = this.h - (b.y + b.h);
+          const targetGap = Math.round(bottomGap / g) * g;
+          const ty = this.h - targetGap - b.h;
+          if (!b._snapped) {
+            if (Math.abs(tx - b.x) > 0.5 || Math.abs(ty - b.y) > 0.5) {
+              b.snapAnim = true;
+              b._snapAnimAt = performance.now();
+            }
+            b._snapped = true;
+          }
+          // Hold the snapped body exactly on grid each frame.
+          b.x = tx; b.y = ty;
+          b.vx = 0; b.vy = 0;
+        }
+      }
+    }
+  }
+
+  // Is this block in the "actionable zone" — touching the floor or only resting on floor-touching blocks?
+  // (Equivalent: nothing it depends on is below it that isn't also on the floor.)
+  // For our purposes, "actionable" = block's bottom is on the floor, OR all blocks beneath it are completed/gone.
+  // Since blocks above auto-fall when below is removed, simpler: actionable = touching the floor.
+  isActionable(id) {
+    const b = this.bodies.get(id);
+    if (!b) return false;
+    return Math.abs((b.y + b.h) - this.h) < 3;
+  }
+}
+
+window.PhysicsWorld = PhysicsWorld;
+window.PHYS = PHYS;
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// data.jsx — initial task set, tag definitions, palettes
+
+// ── Grid ─────────────────────────────────────────────────────────────────────
+// All sizes/positions snap to multiples of GRID. Pick a value that divides
+// nicely into common block sizes.
+const GRID = 50; // default; user can change via tweaks. Anywhere a snap is needed at runtime, prefer the value from tweaks.
+
+// ── Tag identities ───────────────────────────────────────────────────────────
+// Tags are *roles*; their visual color comes from the active PALETTE,
+// resolved by tag.colorIndex. Editable via the Tag Manager.
+const DEFAULT_TAGS = [
+  { id: 'design',   name: 'design',   colorIndex: 0 },
+  { id: 'eng',      name: 'eng',      colorIndex: 1 },
+  { id: 'research', name: 'research', colorIndex: 2 },
+  { id: 'copy',     name: 'copy',     colorIndex: 3 },
+  { id: 'ops',      name: 'ops',      colorIndex: 4 },
+  { id: 'meeting',  name: 'meeting',  colorIndex: 5 },
+];
+
+// Estimate -> default block dimensions (px), all multiples of GRID(50).
+const SIZE_PRESETS = {
+  XS: { w: 150, h: 50  },
+  S:  { w: 200, h: 100 },
+  M:  { w: 250, h: 100 },
+  L:  { w: 300, h: 100 },
+  XL: { w: 350, h: 150 },
+};
+
+// ── 20 palettes ──────────────────────────────────────────────────────────────
+// Each palette has 6 swatches (matching tag count). Curated sets — not random.
+// Colors are chosen to feel cohesive within a palette: shared chroma/lightness
+// range, intentional hue spacing.
+const PALETTES = [
+  { id: 'tetris-classic', name: 'Tetris classic',
+    swatches: ['#00B5C9', '#F2C200', '#A459D1', '#34C759', '#F26B3A', '#E63946'] },
+  { id: 'gameboy', name: 'Game Boy',
+    swatches: ['#9bbc0f', '#8bac0f', '#306230', '#0f380f', '#cadc9f', '#506850'] },
+  { id: 'sunset', name: 'Sunset',
+    swatches: ['#F4A261', '#E76F51', '#E9C46A', '#F4845F', '#D4626E', '#264653'] },
+  { id: 'ocean', name: 'Ocean',
+    swatches: ['#48cae4', '#0096c7', '#023e8a', '#90e0ef', '#0077b6', '#03045e'] },
+  { id: 'meadow', name: 'Meadow',
+    swatches: ['#a3c9a8', '#84b59f', '#69a297', '#50808e', '#cce6cf', '#465c69'] },
+  { id: 'pastel', name: 'Pastel',
+    swatches: ['#ffd6e0', '#ffefcf', '#d4f0f0', '#cce2cb', '#e0c3fc', '#fde2e4'] },
+  { id: 'highlighter', name: 'Highlighter',
+    swatches: ['#ffeb3b', '#ff80ab', '#80d8ff', '#b9f6ca', '#ffab40', '#e040fb'] },
+  { id: 'mono-warm', name: 'Mono warm',
+    swatches: ['#f5e9d4', '#e8c9a0', '#d9a878', '#b8845a', '#8a5a3e', '#5e3a26'] },
+  { id: 'mono-cool', name: 'Mono cool',
+    swatches: ['#e3edf7', '#bcd3e8', '#8cb4d4', '#5e8fb8', '#3d6b94', '#1f4060'] },
+  { id: 'jewel', name: 'Jewel',
+    swatches: ['#bb1e44', '#1e6091', '#577590', '#43aa8b', '#90be6d', '#f9c74f'] },
+  { id: 'neon', name: 'Neon',
+    swatches: ['#ff006e', '#fb5607', '#ffbe0b', '#8338ec', '#3a86ff', '#06ffa5'] },
+  { id: 'autumn', name: 'Autumn',
+    swatches: ['#bb4d00', '#d68c45', '#eab464', '#a23b1f', '#7c4a2d', '#553a26'] },
+  { id: 'spring', name: 'Spring',
+    swatches: ['#a8dadc', '#f1faee', '#ffafcc', '#bde0fe', '#cdb4db', '#fcbf49'] },
+  { id: 'mist', name: 'Mist',
+    swatches: ['#cfd8dc', '#b0bec5', '#90a4ae', '#78909c', '#607d8b', '#455a64'] },
+  { id: 'tropical', name: 'Tropical',
+    swatches: ['#ff9f1c', '#ffbf69', '#2ec4b6', '#cbf3f0', '#e71d36', '#011627'] },
+  { id: 'royal', name: 'Royal',
+    swatches: ['#3a0ca3', '#4361ee', '#7209b7', '#560bad', '#f72585', '#b5179e'] },
+  { id: 'paper', name: 'Paper',
+    swatches: ['#fef9f0', '#f0e4d0', '#dfc9a3', '#c4a276', '#a8784f', '#735035'] },
+  { id: 'noir', name: 'Noir',
+    swatches: ['#212529', '#495057', '#6c757d', '#adb5bd', '#dee2e6', '#f8f9fa'] },
+  { id: 'candy', name: 'Candy',
+    swatches: ['#ff70a6', '#ff9770', '#ffd670', '#e9ff70', '#70d6ff', '#a479ff'] },
+  { id: 'forest', name: 'Forest',
+    swatches: ['#2d5a3d', '#52796f', '#84a98c', '#cad2c5', '#354f52', '#a98467'] },
+];
+
+// ── Project: "Ship the new pricing page" ─────────────────────────────────────
+const INITIAL_TASKS = [
+  { id: 't1',  title: 'Pricing model spreadsheet', tag: 'ops',      size: 'M',  waiting: false, done: false },
+  { id: 't2',  title: 'Competitor teardown',       tag: 'research', size: 'S',  waiting: false, done: false },
+  { id: 't3',  title: 'Lock messaging hierarchy',  tag: 'copy',     size: 'M',  waiting: false, done: false },
+  { id: 't4',  title: 'Wireframe: 3-tier layout',  tag: 'design',   size: 'L',  waiting: false, done: false },
+  { id: 't5',  title: 'Hi-fi mocks + dark mode',   tag: 'design',   size: 'L',  waiting: false, done: false },
+  { id: 't6',  title: 'Legal review on copy',      tag: 'ops',      size: 'S',  waiting: true,  done: false },
+  { id: 't7',  title: 'Build /pricing route',      tag: 'eng',      size: 'M',  waiting: false, done: false },
+  { id: 't8',  title: 'Stripe price IDs',          tag: 'eng',      size: 'S',  waiting: false, done: false },
+  { id: 't9',  title: 'Plan toggle interaction',   tag: 'eng',      size: 'M',  waiting: false, done: false },
+  { id: 't10', title: 'QA on staging',             tag: 'eng',      size: 'S',  waiting: false, done: false },
+  { id: 't11', title: 'Launch announcement',       tag: 'copy',     size: 'M',  waiting: false, done: false },
+  { id: 't12', title: 'Schedule launch sync',      tag: 'meeting',  size: 'XS', waiting: false, done: false },
+];
+
+// Snap helpers
+const snap = (v, g = GRID) => Math.round(v / g) * g;
+const snapMin = (v, g = GRID) => Math.max(g, Math.round(v / g) * g);
+const snapFloor = (v, g = GRID) => Math.floor(v / g) * g;
+
+window.GRID = GRID;
+window.snap = snap;
+window.snapMin = snapMin;
+window.snapFloor = snapFloor;
+window.DEFAULT_TAGS = DEFAULT_TAGS;
+window.SIZE_PRESETS = SIZE_PRESETS;
+window.PALETTES = PALETTES;
+window.INITIAL_TASKS = INITIAL_TASKS;
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// app.jsx — themes, block, context menu, group label, palette/tag manager
+
+const { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakRadio, TweakToggle, TweakButton, TweakSelect } = window;
+const { PhysicsWorld, PHYS, DEFAULT_TAGS, SIZE_PRESETS, INITIAL_TASKS, PALETTES, GRID } = window;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "aesthetic": "playful",
+  "flatBlocks": false,
+  "gravityOn": true,
+  "showActionableGlow": true,
+  "showGrid": true,
+  "labelGroups": true,
+  "gravityStrength": 100,
+  "paletteId": "tetris-classic",
+  "snapToGrid": true,
+  "showGridDuringDrag": true,
+  "gridSize": 50
+}/*EDITMODE-END*/;
+
+// ── Aesthetic themes ─────────────────────────────────────────────────────────
+const AESTHETIC_THEMES = {
+  playful: {
+    bg: '#0e1320',
+    bgGrid: 'rgba(255,255,255,0.04)',
+    bgGridStrong: 'rgba(255,255,255,0.10)',
+    floor: '#080b14',
+    floorGlow: 'rgba(120, 220, 255, 0.85)',
+    blockShadow: '0 6px 0 rgba(0,0,0,.35), 0 12px 24px rgba(0,0,0,.4)',
+    blockBorder: '0',
+    blockRadius: '6px',
+    blockFontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
+    blockFontWeight: 600,
+    titleColor: '#0a0e18',
+    tagBg: 'rgba(0,0,0,.18)',
+    tagColor: '#0a0e18',
+    fillMode: 'asis',
+    panelBg: 'rgba(20, 26, 42, 0.92)',
+    panelBorder: 'rgba(255,255,255,0.08)',
+    panelText: 'rgba(255,255,255,0.92)',
+    accentColor: '#7dd3fc',
+    chipBg: 'rgba(255,255,255,0.06)',
+    chipFg: 'rgba(255,255,255,0.9)',
+    topBarBg: 'rgba(14,19,32,0.7)',
+    topBarBorder: 'rgba(255,255,255,0.07)',
+  },
+  modern: {
+    bg: '#f5f3ee',
+    bgGrid: 'rgba(0,0,0,0.04)',
+    bgGridStrong: 'rgba(0,0,0,0.10)',
+    floor: '#e9e4d8',
+    floorGlow: 'rgba(64, 96, 220, 0.5)',
+    blockShadow: '0 1px 0 rgba(255,255,255,.7) inset, 0 1px 2px rgba(0,0,0,.06), 0 8px 20px rgba(0,0,0,.08)',
+    blockBorder: '0.5px solid rgba(0,0,0,0.08)',
+    blockRadius: '10px',
+    blockFontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif',
+    blockFontWeight: 500,
+    titleColor: 'rgba(20,18,12,0.92)',
+    tagBg: 'rgba(0,0,0,.05)',
+    tagColor: 'rgba(20,18,12,0.6)',
+    fillMode: 'tint',
+    panelBg: 'rgba(255,253,248,0.95)',
+    panelBorder: 'rgba(0,0,0,0.08)',
+    panelText: 'rgba(20,18,12,0.92)',
+    accentColor: '#3b5bdb',
+    chipBg: 'rgba(0,0,0,0.05)',
+    chipFg: 'rgba(20,18,12,0.7)',
+    topBarBg: 'rgba(245,243,238,0.85)',
+    topBarBorder: 'rgba(0,0,0,0.06)',
+  },
+  brutalist: {
+    bg: '#fafaf5',
+    bgGrid: 'rgba(0,0,0,0.06)',
+    bgGridStrong: 'rgba(0,0,0,0.14)',
+    floor: '#000',
+    floorGlow: '#ffeb00',
+    blockShadow: '4px 4px 0 #000',
+    blockBorder: '2px solid #000',
+    blockRadius: '0',
+    blockFontFamily: '"JetBrains Mono", ui-monospace, monospace',
+    blockFontWeight: 600,
+    titleColor: '#000',
+    tagBg: '#000',
+    tagColor: '#fff',
+    fillMode: 'asis',
+    panelBg: '#fff',
+    panelBorder: '#000',
+    panelText: '#000',
+    accentColor: '#000',
+    chipBg: '#000',
+    chipFg: '#fff',
+    topBarBg: '#fff',
+    topBarBorder: '#000',
+  },
+  // ── 3 new aesthetics ──────────────────────────────────────────────────────
+  neon: {
+    bg: '#08040f',
+    bgGrid: 'rgba(180,0,255,0.07)',
+    bgGridStrong: 'rgba(180,0,255,0.18)',
+    floor: '#04020a',
+    floorGlow: 'rgba(0,255,200,1)',
+    blockShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 18px rgba(0,200,255,0.25)',
+    blockBorder: '1px solid rgba(255,255,255,0.12)',
+    blockRadius: '4px',
+    blockFontFamily: '"JetBrains Mono", ui-monospace, monospace',
+    blockFontWeight: 500,
+    titleColor: '#fff',
+    tagBg: 'rgba(255,255,255,0.08)',
+    tagColor: 'rgba(255,255,255,0.85)',
+    fillMode: 'neon',   // special: darken fill + colored glow border
+    panelBg: 'rgba(12,6,22,0.96)',
+    panelBorder: 'rgba(0,255,200,0.2)',
+    panelText: 'rgba(220,220,255,0.92)',
+    accentColor: '#00ffc8',
+    chipBg: 'rgba(0,255,200,0.08)',
+    chipFg: '#00ffc8',
+    topBarBg: 'rgba(8,4,15,0.85)',
+    topBarBorder: 'rgba(0,255,200,0.12)',
+  },
+  soft: {
+    bg: '#fdf6f0',
+    bgGrid: 'rgba(180,120,80,0.05)',
+    bgGridStrong: 'rgba(180,120,80,0.12)',
+    floor: '#f0e4d4',
+    floorGlow: 'rgba(255,150,100,0.5)',
+    blockShadow: '0 2px 0 rgba(200,150,100,0.2), 0 6px 20px rgba(180,100,60,0.08)',
+    blockBorder: '1px solid rgba(200,150,100,0.18)',
+    blockRadius: '16px',
+    blockFontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
+    blockFontWeight: 500,
+    titleColor: '#3d2a1a',
+    tagBg: 'rgba(180,120,60,0.1)',
+    tagColor: '#6b4226',
+    fillMode: 'tint',
+    panelBg: 'rgba(255,250,244,0.97)',
+    panelBorder: 'rgba(200,150,100,0.15)',
+    panelText: '#3d2a1a',
+    accentColor: '#d4845a',
+    chipBg: 'rgba(180,120,60,0.08)',
+    chipFg: '#6b4226',
+    topBarBg: 'rgba(253,246,240,0.9)',
+    topBarBorder: 'rgba(200,150,100,0.12)',
+  },
+  terminal: {
+    bg: '#0d1117',
+    bgGrid: 'rgba(0,255,65,0.04)',
+    bgGridStrong: 'rgba(0,255,65,0.1)',
+    floor: '#010409',
+    floorGlow: 'rgba(0,255,65,0.9)',
+    blockShadow: '0 0 0 1px rgba(0,255,65,0.2)',
+    blockBorder: '1px solid rgba(0,255,65,0.3)',
+    blockRadius: '2px',
+    blockFontFamily: '"JetBrains Mono", ui-monospace, monospace',
+    blockFontWeight: 400,
+    titleColor: '#00ff41',
+    tagBg: 'rgba(0,255,65,0.12)',
+    tagColor: '#00ff41',
+    fillMode: 'terminal', // special: dark bg + green tint
+    panelBg: 'rgba(13,17,23,0.98)',
+    panelBorder: 'rgba(0,255,65,0.25)',
+    panelText: '#00ff41',
+    accentColor: '#00ff41',
+    chipBg: 'rgba(0,255,65,0.08)',
+    chipFg: '#00ff41',
+    topBarBg: 'rgba(13,17,23,0.9)',
+    topBarBorder: 'rgba(0,255,65,0.2)',
+  },
+};
+
+// ── Color helpers ────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  return {
+    r: parseInt(v.slice(0, 2), 16),
+    g: parseInt(v.slice(2, 4), 16),
+    b: parseInt(v.slice(4, 6), 16),
+  };
+}
+function rgbToHex({ r, g, b }) {
+  const h = (n) => Math.round(n).toString(16).padStart(2, '0');
+  return '#' + h(r) + h(g) + h(b);
+}
+function tint(hex, amt) {
+  const c = hexToRgb(hex);
+  return rgbToHex({
+    r: c.r + (255 - c.r) * amt,
+    g: c.g + (255 - c.g) * amt,
+    b: c.b + (255 - c.b) * amt,
+  });
+}
+function darken(hex, amt) {
+  const c = hexToRgb(hex);
+  return rgbToHex({ r: c.r * (1 - amt), g: c.g * (1 - amt), b: c.b * (1 - amt) });
+}
+function luminance(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const a = [r, g, b].map((v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+function readableFg(hex) {
+  return luminance(hex) > 0.55 ? '#0a0e18' : '#ffffff';
+}
+
+// ── Platform-aware shortcut hints ────────────────────────────────────────────
+// Returns the user-facing string for a shortcut. Mac shows ⌘, ⌥, etc.;
+// everywhere else shows Ctrl, Alt, Shift. Tokens: mod, alt, shift, plus a key.
+const __isMac = (() => {
+  if (typeof navigator === 'undefined') return false;
+  const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  return /mac/i.test(p);
+})();
+function formatShortcut(combo) {
+  return combo.split('+').map((part) => {
+    const k = part.trim().toLowerCase();
+    if (k === 'mod')   return __isMac ? '⌘' : 'Ctrl';
+    if (k === 'alt')   return __isMac ? '⌥' : 'Alt';
+    if (k === 'shift') return __isMac ? '⇧' : 'Shift';
+    return part.length === 1 ? part.toUpperCase() : part;
+  }).join(__isMac ? '' : '+');
+}
+
+// ── HSL helpers ──────────────────────────────────────────────────────────────
+function rgbToHsl({ r, g, b }) {
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  let h = 0, s = 0; const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case rn: h = (gn - bn) / d + (gn < bn ? 6 : 0); break;
+      case gn: h = (bn - rn) / d + 2; break;
+      case bn: h = (rn - gn) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s, l };
+}
+function hslToRgb({ h, s, l }) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = h / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let rp = 0, gp = 0, bp = 0;
+  if (hp < 1) { rp = c; gp = x; }
+  else if (hp < 2) { rp = x; gp = c; }
+  else if (hp < 3) { gp = c; bp = x; }
+  else if (hp < 4) { gp = x; bp = c; }
+  else if (hp < 5) { rp = x; bp = c; }
+  else { rp = c; bp = x; }
+  const m = l - c / 2;
+  return { r: (rp + m) * 255, g: (gp + m) * 255, b: (bp + m) * 255 };
+}
+function adjustSaturation(hex, mult) {
+  const hsl = rgbToHsl(hexToRgb(hex));
+  hsl.s = Math.max(0, Math.min(1, hsl.s * mult));
+  return rgbToHex(hslToRgb(hsl));
+}
+
+// ── Reduced motion ───────────────────────────────────────────────────────────
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = React.useState(() =>
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+  React.useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
+
+// ── Resolve a tag's fill color ───────────────────────────────────────────────
+function resolveTagFill(tag, palette, theme) {
+  const idx = (tag && Number.isFinite(tag.colorIndex)) ? tag.colorIndex : 0;
+  const swatches = palette.swatches;
+  const base = swatches[idx % swatches.length];
+  if (theme.fillMode === 'tint') return tint(base, 0.55);
+  if (theme.fillMode === 'neon') return darken(base, 0.72);
+  if (theme.fillMode === 'terminal') return 'rgba(0,20,8,0.85)';
+  return base;
+}
+
+// ── Block ────────────────────────────────────────────────────────────────────
+
+function Block({
+  task, body, theme, palette, tagsById,
+  selected, completing, deleting, editing, isActionable,
+  onPointerDown, onResizeStart, onContextMenu, onDoubleClick,
+  onCommitEdit, onCancelEdit, onComplete,
+  resizing, flatBlocks, glowPulse, showActionableGlow, reducedMotion,
+}) {
+  const inputRef = React.useRef(null);
+  React.useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const tag = tagsById[task.tag] || { name: task.tag, colorIndex: 0 };
+  const fill = resolveTagFill(tag, palette, theme);
+
+  // Neon: fg is always the palette color itself (bright), rest is dark bg
+  let fg;
+  if (theme.fillMode === 'neon') {
+    const base = palette.swatches[(tag.colorIndex || 0) % palette.swatches.length];
+    fg = base;
+  } else if (theme.fillMode === 'terminal') {
+    fg = '#00ff41';
+  } else if (theme.fillMode === 'tint') {
+    fg = theme.titleColor;
+  } else {
+    fg = readableFg(fill);
+  }
+
+  const deformY = flatBlocks ? 0 : (body.deform || 0);
+  let sx = 1 - deformY * 0.6;
+  let sy = 1 + deformY * 0.6;
+  // Drag lift: scale up slightly when held; deform overrides this if active.
+  if (body.dragging && !deformY) { sx = 1.03; sy = 1.03; }
+  // Completion celebration: brief pop on the first ~80ms, then settle to fade scale.
+  if (completing) { sx *= 0.92; sy *= 0.92; }
+  if (deleting) { sx *= 0.92; sy *= 0.92; }
+  const rot = flatBlocks ? 0 : (body.av || 0);
+
+  // Flat mode overrides
+  const flatShadow = theme.aesthetic === 'brutalist' ? '4px 4px 0 #000' : 'none';
+  const flatBorder = theme.aesthetic === 'brutalist' ? '2px solid #000'
+    : theme.aesthetic === 'terminal' ? '1px solid rgba(0,255,65,0.3)'
+    : theme.aesthetic === 'neon' ? '1px solid rgba(255,255,255,0.12)'
+    : theme.fillMode === 'tint' ? '1px solid rgba(0,0,0,0.10)' : 'none';
+
+  // Neon glow border when not flat
+  let neonGlow = 'none';
+  if (theme.fillMode === 'neon' && !flatBlocks) {
+    const base = palette.swatches[(tag.colorIndex || 0) % palette.swatches.length];
+    neonGlow = `0 0 0 1px ${base}44, 0 0 16px ${base}55, 0 0 40px ${base}22`;
+  }
+
+  // Compose block shadow: theme shadow + optional drag lift + optional actionable halo.
+  const baseShadow = flatBlocks ? flatShadow : (theme.fillMode === 'neon' ? neonGlow : theme.blockShadow);
+  const dragShadow = body.dragging && !flatBlocks
+    ? '0 14px 30px rgba(0,0,0,.45), 0 6px 12px rgba(0,0,0,.35)'
+    : null;
+  const haloOn = !!(showActionableGlow && isActionable && !completing && !deleting && !body.dragging);
+  const haloPulse = haloOn ? (0.45 + 0.25 * Math.sin((glowPulse || 0) * 1.6)) : 0;
+  const haloShadow = haloOn ? `0 0 0 1px ${theme.floorGlow}, 0 0 24px ${theme.floorGlow.replace(/[\d.]+\)$/, haloPulse.toFixed(2) + ')')}` : null;
+  const composedShadow = [haloShadow, dragShadow || baseShadow].filter(Boolean).join(', ');
+
+  // Build transition string. Animations are suppressed during drag/completing/
+  // deleting so motion stays snappy when the user is actively moving things.
+  let transitionStr;
+  if (reducedMotion) {
+    transitionStr = 'none';
+  } else if (completing) {
+    transitionStr = 'opacity .27s ease .08s, transform .35s cubic-bezier(.2,.8,.2,1)';
+  } else if (deleting) {
+    transitionStr = 'opacity .18s ease, transform .18s ease';
+  } else if (body.snapAnim) {
+    transitionStr = 'left .18s cubic-bezier(.2,.8,.2,1), top .18s cubic-bezier(.2,.8,.2,1), width .18s cubic-bezier(.2,.8,.2,1), height .18s cubic-bezier(.2,.8,.2,1)';
+  } else if (body.dragging) {
+    transitionStr = 'transform .12s ease, box-shadow .12s ease';
+  } else {
+    // Idle: cross-fade colors when palette/theme changes; quick lift-down.
+    transitionStr = 'background-color .25s ease, border-color .25s ease, color .25s ease, transform .12s ease, box-shadow .25s ease';
+  }
+
+  const baseStyle = {
+    position: 'absolute',
+    left: body.x,
+    top: body.y,
+    width: body.w,
+    height: body.h,
+    transform: `rotate(${rot}rad) scale(${sx}, ${sy})`,
+    transformOrigin: 'center bottom',
+    background: fill,
+    border: flatBlocks ? flatBorder : (theme.blockBorder || 'none'),
+    borderRadius: theme.blockRadius,
+    boxShadow: composedShadow,
+    color: fg,
+    fontFamily: theme.blockFontFamily,
+    fontWeight: theme.blockFontWeight,
+    cursor: body.dragging ? 'grabbing' : 'grab',
+    userSelect: 'none',
+    zIndex: body.dragging ? 100000 : Math.floor(body.y + body.h),
+    transition: transitionStr,
+    opacity: (completing || deleting) ? 0 : 1,
+    willChange: 'transform, top, left, width, height',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '8px 10px',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+  };
+
+  if (task.waiting) {
+    baseStyle.opacity = completing ? 0 : 0.5;
+    baseStyle.borderStyle = 'dashed';
+    baseStyle.borderWidth = theme.aesthetic === 'brutalist' ? '2px' : '1.5px';
+    baseStyle.borderColor = theme.aesthetic === 'brutalist' ? '#000'
+      : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.3)'
+      : theme.fillMode === 'neon' ? 'rgba(255,255,255,0.15)'
+      : darken(fill, 0.3);
+    baseStyle.boxShadow = theme.aesthetic === 'brutalist' ? '4px 4px 0 #000' : '0 2px 6px rgba(0,0,0,.06)';
+  }
+
+  if (selected) {
+    baseStyle.outline = theme.aesthetic === 'brutalist'
+      ? '3px solid #ff3d00'
+      : `2px solid ${theme.accentColor}`;
+    baseStyle.outlineOffset = '2px';
+  }
+
+  // Derive chip from the block's actual fill (resolveTagFill output) so chips
+  // stay readable on light palettes / light themes. Brutalist/terminal/neon
+  // keep their distinctive looks; everything else uses luminance-based contrast.
+  let tagBg, tagFg;
+  if (theme.aesthetic === 'brutalist') {
+    tagBg = '#000'; tagFg = '#fff';
+  } else if (theme.fillMode === 'terminal') {
+    tagBg = 'rgba(0,255,65,0.12)'; tagFg = '#00ff41';
+  } else if (theme.fillMode === 'neon') {
+    tagBg = 'rgba(255,255,255,0.07)'; tagFg = fg;
+  } else {
+    const lightFill = luminance(fill) > 0.55;
+    tagBg = lightFill ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)';
+    tagFg = lightFill ? '#0a0e18' : '#ffffff';
+  }
+
+  return (
+    <div
+      style={baseStyle}
+      onPointerDown={onPointerDown}
+      onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
+      data-block-id={task.id}
+      data-block-role="block"
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{
+          fontSize: 9.5,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+          padding: '2px 6px',
+          borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : 999,
+          background: tagBg,
+          color: tagFg,
+          opacity: task.waiting ? 0.7 : 1,
+        }}>{tag.name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isActionable && !editing && !task.waiting && (
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); }}
+              onClick={(e) => { e.stopPropagation(); onComplete(); }}
+              title="Mark complete"
+              aria-label="Mark complete"
+              style={{
+                width: 24, height: 24,
+                borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : '50%',
+                border: theme.aesthetic === 'brutalist' ? '2px solid #000'
+                  : theme.fillMode === 'terminal' ? '1px solid #00ff41'
+                  : theme.fillMode === 'neon' ? `1px solid ${fg}`
+                  : `1.5px solid ${darken(fill, 0.35)}`,
+                background: theme.aesthetic === 'brutalist' ? '#fff'
+                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
+                  : theme.fillMode === 'neon' ? 'rgba(255,255,255,0.07)'
+                  : 'rgba(255,255,255,.55)',
+                color: theme.aesthetic === 'brutalist' ? '#000'
+                  : theme.fillMode === 'terminal' ? '#00ff41'
+                  : theme.fillMode === 'neon' ? fg
+                  : darken(fill, 0.5),
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : 'none',
+                transition: 'transform .1s, background .1s',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#ffeb00'
+                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.25)'
+                  : '#fff';
+                e.currentTarget.style.transform = 'scale(1.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#fff'
+                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
+                  : 'rgba(255,255,255,.55)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <path d="M2.5 6.5 L5 9 L9.5 3.5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+          <span style={{
+            fontSize: 9.5,
+            letterSpacing: '0.05em',
+            fontWeight: 600,
+            opacity: 0.6,
+            fontVariantNumeric: 'tabular-nums',
+          }}>{task.size}</span>
+        </div>
+      </div>
+
+      {editing ? (
+        <input
+          ref={inputRef}
+          defaultValue={task.title}
+          onBlur={(e) => onCommitEdit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onCommitEdit(e.target.value); }
+            if (e.key === 'Escape') { e.preventDefault(); onCancelEdit(); }
+          }}
+          style={{
+            marginTop: 2,
+            background: 'rgba(255,255,255,.5)',
+            border: 'none',
+            outline: '2px solid rgba(0,0,0,.4)',
+            font: 'inherit',
+            color: '#0a0e18',
+            padding: '2px 4px',
+            borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : 4,
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
+        />
+      ) : (
+        <div style={{
+          marginTop: 4,
+          fontSize: Math.max(11, Math.min(15, body.h * 0.16)),
+          lineHeight: 1.2,
+          textWrap: 'pretty',
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          paddingRight: 0,
+        }}>
+          {task.title}
+        </div>
+      )}
+
+      {!editing && !completing && (
+        <React.Fragment>
+          {[
+            { dir: 'n',  style: { top: -3, left: 8, right: 8, height: 8, cursor: 'ns-resize' } },
+            { dir: 's',  style: { bottom: -3, left: 8, right: 8, height: 8, cursor: 'ns-resize' } },
+            { dir: 'w',  style: { left: -3, top: 8, bottom: 8, width: 8, cursor: 'ew-resize' } },
+            { dir: 'e',  style: { right: -3, top: 8, bottom: 8, width: 8, cursor: 'ew-resize' } },
+            { dir: 'nw', style: { top: -4, left: -4, width: 12, height: 12, cursor: 'nwse-resize' } },
+            { dir: 'ne', style: { top: -4, right: -4, width: 12, height: 12, cursor: 'nesw-resize' } },
+            { dir: 'sw', style: { bottom: -4, left: -4, width: 12, height: 12, cursor: 'nesw-resize' } },
+            { dir: 'se', style: { bottom: -4, right: -4, width: 12, height: 12, cursor: 'nwse-resize' } },
+          ].map((h) => (
+            <div
+              key={h.dir}
+              data-resize-dir={h.dir}
+              onPointerDown={(e) => onResizeStart(e, h.dir)}
+              onDoubleClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                ...h.style,
+                zIndex: 2,
+                touchAction: 'none',
+              }}
+            />
+          ))}
+          <div style={{
+            position: 'absolute',
+            right: 2, bottom: 2,
+            width: 12, height: 12,
+            opacity: selected ? 0.6 : 0.25,
+            color: fg,
+            pointerEvents: 'none',
+            transition: 'opacity .15s',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" style={{ display: 'block' }}>
+              <path d="M12 4 L4 12 M12 8 L8 12" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+// ── Context Menu ─────────────────────────────────────────────────────────────
+
+function ContextMenu({ x, y, items, theme, onClose }) {
+  React.useEffect(() => {
+    const close = () => onClose();
+    window.addEventListener('mousedown', close);
+    window.addEventListener('blur', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('blur', close);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        left: x, top: y,
+        background: theme.panelBg,
+        backdropFilter: 'blur(20px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+        border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 10,
+        boxShadow: theme.aesthetic === 'brutalist' ? '4px 4px 0 #000' : '0 12px 40px rgba(0,0,0,.18)',
+        padding: 4,
+        minWidth: 200,
+        zIndex: 1000,
+        fontFamily: theme.blockFontFamily,
+        fontSize: 12,
+        color: theme.panelText,
+      }}
+    >
+      {items.map((item, i) => item.divider ? (
+        <div key={i} style={{ height: 1, background: theme.panelBorder, margin: '4px 0' }} />
+      ) : (
+        <button
+          key={i}
+          onClick={() => { item.onClick(); onClose(); }}
+          disabled={item.disabled}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            padding: '7px 10px',
+            border: 0,
+            background: 'transparent',
+            color: 'inherit',
+            font: 'inherit',
+            textAlign: 'left',
+            borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+            opacity: item.disabled ? 0.4 : 1,
+            cursor: item.disabled ? 'not-allowed' : 'default',
+          }}
+          onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = theme.aesthetic === 'modern' ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.08)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <span>{item.label}</span>
+          {item.shortcut && <span style={{ opacity: 0.5, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>{item.shortcut}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Group Label ──────────────────────────────────────────────────────────────
+
+function GroupLabel({ group, theme, onRename, onDelete }) {
+  const [editing, setEditing] = React.useState(group.justCreated);
+  const inputRef = React.useRef(null);
+  React.useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const { x1, y1, x2 } = group.bbox;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: x1 - 6,
+        top: y1 - 28,
+        width: x2 - x1 + 12,
+        pointerEvents: 'none',
+      }}
+    >
+      <div style={{
+        position: 'absolute',
+        left: 0, top: 22,
+        right: 0, bottom: -(group.bbox.y2 - group.bbox.y1 + 10),
+        border: `1.5px dashed ${theme.accentColor}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 8,
+        opacity: 0.5,
+      }} />
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          background: theme.accentColor,
+          color: theme.aesthetic === 'modern' ? '#fff' : (theme.aesthetic === 'brutalist' ? '#fff' : '#0a0e18'),
+          padding: '3px 10px',
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 999,
+          fontFamily: theme.blockFontFamily,
+          pointerEvents: 'auto',
+          boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : '0 2px 8px rgba(0,0,0,.15)',
+        }}
+        onDoubleClick={() => setEditing(true)}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            defaultValue={group.label}
+            onBlur={(e) => { onRename(e.target.value || 'group'); setEditing(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { onRename(e.target.value || 'group'); setEditing(false); }
+              if (e.key === 'Escape') { setEditing(false); }
+            }}
+            style={{
+              background: 'rgba(255,255,255,.25)',
+              border: 0,
+              outline: 'none',
+              font: 'inherit',
+              color: 'inherit',
+              width: 120,
+              padding: 0,
+            }}
+          />
+        ) : (
+          <span>{group.label}</span>
+        )}
+        <button
+          onClick={onDelete}
+          style={{
+            border: 0,
+            background: 'transparent',
+            color: 'inherit',
+            opacity: 0.7,
+            cursor: 'default',
+            padding: 0,
+            font: 'inherit',
+            lineHeight: 1,
+          }}
+          aria-label="Remove group"
+        >×</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Palette Manager ──────────────────────────────────────────────────────────
+
+function PaletteManager({
+  theme, palettes, currentPaletteId, onPickPalette,
+  tags, onUpdateTags,
+  customSwatches, onUpdateCustomSwatches,
+  onClose,
+}) {
+  const palette = palettes.find((p) => p.id === currentPaletteId) || palettes[0];
+  const swatches = customSwatches[palette.id] || palette.swatches;
+  const isCustom = !!customSwatches[palette.id];
+
+  // Saturation slider state — local, resets on palette change. Acts as a
+  // multiplier (0–2x) applied to all 6 current swatches and committed as a
+  // normal palette customization.
+  const [satPct, setSatPct] = React.useState(100);
+  const satBaseRef = React.useRef(swatches);
+  React.useEffect(() => {
+    setSatPct(100);
+    satBaseRef.current = customSwatches[palette.id] || palette.swatches;
+  }, [palette.id]);
+
+  const fontFamily = theme.blockFontFamily;
+  const text = theme.panelText;
+
+  const updateSwatch = (i, color) => {
+    const next = [...swatches];
+    next[i] = color;
+    onUpdateCustomSwatches({ ...customSwatches, [palette.id]: next });
+    satBaseRef.current = next;
+    setSatPct(100);
+  };
+  const applySaturation = (pct) => {
+    setSatPct(pct);
+    const mult = pct / 100;
+    const base = satBaseRef.current;
+    const next = base.map((c) => adjustSaturation(c, mult));
+    onUpdateCustomSwatches({ ...customSwatches, [palette.id]: next });
+  };
+  const resetSwatches = () => {
+    const { [palette.id]: _, ...rest } = customSwatches;
+    onUpdateCustomSwatches(rest);
+    setSatPct(100);
+    satBaseRef.current = palette.swatches;
+  };
+
+  const updateTag = (id, patch) => {
+    onUpdateTags(tags.map((t) => t.id === id ? { ...t, ...patch } : t));
+  };
+  const deleteTag = (id) => {
+    if (tags.length <= 1) return;
+    onUpdateTags(tags.filter((t) => t.id !== id));
+  };
+  const addTag = () => {
+    const id = 'tag' + Date.now();
+    onUpdateTags([...tags, { id, name: 'new', colorIndex: tags.length % swatches.length }]);
+  };
+
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        top: 60,
+        right: 16,
+        bottom: 16,
+        width: 360,
+        background: theme.panelBg,
+        backdropFilter: 'blur(20px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+        color: text,
+        border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 14,
+        boxShadow: theme.aesthetic === 'brutalist' ? '6px 6px 0 #000' : '0 24px 60px rgba(0,0,0,.35)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        fontFamily,
+        zIndex: 1100,
+      }}
+    >
+        <div style={{
+          padding: '12px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em' }}>Palette & Tags</div>
+          <button onClick={onClose} style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ padding: 10, borderBottom: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', opacity: 0.6, padding: '0 4px 8px' }}>
+              Palettes ({palettes.length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            {palettes.map((p) => {
+              const sw = customSwatches[p.id] || p.swatches;
+              const active = p.id === currentPaletteId;
+              return (
+                <button key={p.id} onClick={() => onPickPalette(p.id)} style={{
+                  textAlign: 'left', padding: '6px 8px',
+                  background: active ? (theme.aesthetic === 'modern' ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.08)') : 'transparent',
+                  border: active ? (theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.accentColor}`) : (theme.aesthetic === 'brutalist' ? `2px solid transparent` : `1px solid transparent`),
+                  borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+                  color: 'inherit', font: 'inherit', cursor: 'pointer',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                    {customSwatches[p.id] && <span style={{ fontSize: 8, opacity: 0.5 }}>edited</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 1, height: 10 }}>
+                    {sw.map((c, i) => (<div key={i} style={{ flex: 1, background: c, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 1 }} />))}
+                  </div>
+                </button>
+              );
+            })}
+            </div>
+          </div>
+
+          <div style={{ padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>{palette.name}</div>
+                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 1 }}>Click a swatch to edit</div>
+              </div>
+              {isCustom && (
+                <button onClick={resetSwatches} style={{ border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`, background: 'transparent', color: 'inherit', padding: '3px 8px', fontSize: 10, fontWeight: 600, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 5, cursor: 'pointer', font: 'inherit' }}>Reset</button>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: 0.6 }}>Saturation</div>
+                <div style={{ fontSize: 10, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{satPct}%</div>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={1}
+                value={satPct}
+                onChange={(e) => applySaturation(parseInt(e.target.value, 10))}
+                style={{ width: '100%', accentColor: theme.accentColor }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, marginBottom: 16 }}>
+              {swatches.map((c, i) => (
+                <label key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6, border: theme.aesthetic === 'brutalist' ? '2px solid #000' : '1px solid rgba(0,0,0,.1)', background: c, cursor: 'pointer', overflow: 'hidden', boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : '0 1px 2px rgba(0,0,0,.1)' }}>
+                  <input type="color" value={c} onChange={(e) => updateSwatch(i, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }} />
+                  <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 8, fontWeight: 700, color: readableFg(c), opacity: 0.7 }}>{i}</div>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Tags</div>
+              <button onClick={addTag} style={{ border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`, background: 'transparent', color: 'inherit', padding: '3px 8px', fontSize: 10, fontWeight: 600, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 5, cursor: 'pointer', font: 'inherit' }}>+ Add</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {tags.map((tag) => (
+                <div key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 5, border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6 }}>
+                  <input value={tag.name} onChange={(e) => updateTag(tag.id, { name: e.target.value })} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'inherit', font: 'inherit', fontSize: 11, fontWeight: 500, padding: '2px 4px' }} />
+                  <div style={{ display: 'flex', gap: 2 }}>
+                    {swatches.map((c, i) => (
+                      <button key={i} onClick={() => updateTag(tag.id, { colorIndex: i })} title={`Color ${i}`} style={{ width: 18, height: 18, background: c, border: tag.colorIndex === i ? (theme.aesthetic === 'brutalist' ? '2px solid #000' : `2px solid ${theme.accentColor}`) : (theme.aesthetic === 'brutalist' ? '2px solid transparent' : '1px solid rgba(0,0,0,.15)'), borderRadius: theme.aesthetic === 'brutalist' ? 0 : 3, cursor: 'pointer', padding: 0, outline: 'none' }} />
+                    ))}
+                  </div>
+                  <button onClick={() => deleteTag(tag.id)} disabled={tags.length <= 1} style={{ width: 20, height: 20, border: 0, background: 'transparent', color: 'inherit', opacity: tags.length <= 1 ? 0.25 : 0.55, cursor: tags.length <= 1 ? 'not-allowed' : 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+  );
+}
+
+window.Block = Block;
+window.ContextMenu = ContextMenu;
+window.GroupLabel = GroupLabel;
+window.PaletteManager = PaletteManager;
+window.AESTHETIC_THEMES = AESTHETIC_THEMES;
+window.resolveTagFill = resolveTagFill;
+window.readableFg = readableFg;
+window.darken = darken;
+window.tint = tint;
+window.adjustSaturation = adjustSaturation;
+window.usePrefersReducedMotion = usePrefersReducedMotion;
+window.luminance = luminance;
+window.formatShortcut = formatShortcut;
+window.TWEAK_DEFAULTS = TWEAK_DEFAULTS;
+
+</script>
+
+<script type="text/babel" data-presets="react">
+// scene.jsx — main scene wiring physics + interactions + grid snapping
+
+const {
+  PhysicsWorld, AESTHETIC_THEMES, INITIAL_TASKS, SIZE_PRESETS, DEFAULT_TAGS, PALETTES,
+  GRID, snap, snapMin,
+  Block, ContextMenu, GroupLabel, PaletteManager,
+  TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakSlider, TweakButton, TweakSelect,
+  useTweaks, TWEAK_DEFAULTS, formatShortcut,
+} = window;
+
+let __idc = 1000;
+const nextId = () => 't' + (++__idc);
+
+const snapTo = (v, g) => Math.round(v / g) * g;
+const snapMinTo = (v, g) => Math.max(g, Math.round(v / g) * g);
+
+// ── Gear icon SVG ────────────────────────────────────────────────────────────
+function GearIcon({ size = 16, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ display: 'block', flexShrink: 0 }}>
+      <path
+        d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+        stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+      />
+      <path
+        d="M16.2 12.5a1.38 1.38 0 0 0 .28 1.52l.05.05a1.67 1.67 0 0 1-1.18 2.85 1.67 1.67 0 0 1-1.18-.49l-.05-.05a1.38 1.38 0 0 0-1.52-.28 1.38 1.38 0 0 0-.84 1.27V17.5a1.67 1.67 0 1 1-3.33 0v-.07a1.38 1.38 0 0 0-.9-1.27 1.38 1.38 0 0 0-1.52.28l-.05.05a1.67 1.67 0 0 1-2.36-2.36l.05-.05a1.38 1.38 0 0 0 .28-1.52 1.38 1.38 0 0 0-1.27-.84H2.5a1.67 1.67 0 1 1 0-3.33h.07a1.38 1.38 0 0 0 1.27-.9 1.38 1.38 0 0 0-.28-1.52l-.05-.05a1.67 1.67 0 0 1 2.36-2.36l.05.05a1.38 1.38 0 0 0 1.52.28h.07A1.38 1.38 0 0 0 8.33 2.57V2.5a1.67 1.67 0 1 1 3.33 0v.07a1.38 1.38 0 0 0 .84 1.27 1.38 1.38 0 0 0 1.52-.28l.05-.05a1.67 1.67 0 0 1 2.36 2.36l-.05.05a1.38 1.38 0 0 0-.28 1.52v.07a1.38 1.38 0 0 0 1.27.84h.07a1.67 1.67 0 1 1 0 3.33h-.07a1.38 1.38 0 0 0-1.27.83Z"
+        stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ── Settings Page ────────────────────────────────────────────────────────────
+// Full-panel settings overlay (replaces TweaksPanel, covers the right side).
+
+const AESTHETIC_META = [
+  { id: 'playful',   label: 'Playful',   desc: 'Dark + vibrant, chunky shadows' },
+  { id: 'modern',    label: 'Modern',    desc: 'Light + minimal, soft tints' },
+  { id: 'brutalist', label: 'Brutalist', desc: 'Monochrome, bold borders' },
+  { id: 'neon',      label: 'Neon',      desc: 'Near-black, glowing edges' },
+  { id: 'soft',      label: 'Soft',      desc: 'Warm cream, rounded & gentle' },
+  { id: 'terminal',  label: 'Terminal',  desc: 'Green-on-black, mono grid' },
+];
+
+function SettingsPage({
+  open, reducedMotion,
+  t, setTweak, theme,
+  tags, onUpdateTags,
+  palettes, customSwatches, onUpdateCustomSwatches,
+  addTask, clearBoard, onExport, onImport, importError,
+  onOpenPalette,
+  onClose,
+}) {
+  const [section, setSection] = React.useState('appearance');
+  const [clearArmed, setClearArmed] = React.useState(false);
+  React.useEffect(() => {
+    if (!clearArmed) return;
+    const id = setTimeout(() => setClearArmed(false), 3000);
+    return () => clearTimeout(id);
+  }, [clearArmed]);
+  const fileInputRef = React.useRef(null);
+
+  const sectionStyle = (id) => ({
+    appearance: 'none',
+    border: 'none',
+    background: section === id
+      ? (theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.09)')
+      : 'transparent',
+    color: section === id ? theme.panelText : (theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)'),
+    fontFamily: theme.blockFontFamily,
+    fontSize: 11.5,
+    fontWeight: section === id ? 700 : 500,
+    letterSpacing: '0.02em',
+    padding: '7px 12px',
+    borderRadius: theme.aesthetic === 'brutalist' ? 0 : 7,
+    cursor: 'default',
+    textAlign: 'left',
+    width: '100%',
+    transition: 'background .12s, color .12s',
+  });
+
+  const isDark = theme.aesthetic === 'playful' || theme.aesthetic === 'neon' || theme.aesthetic === 'terminal';
+  const divider = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const subText = isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.42)';
+
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        top: 0, right: 0, bottom: 0,
+        width: 420,
+        background: theme.panelBg,
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        color: theme.panelText,
+        borderLeft: theme.aesthetic === 'brutalist'
+          ? `3px solid ${theme.panelBorder}`
+          : `0.5px solid ${theme.panelBorder}`,
+        boxShadow: isDark ? '-20px 0 60px rgba(0,0,0,0.5)' : '-20px 0 60px rgba(0,0,0,0.12)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: theme.blockFontFamily,
+        zIndex: 1200,
+        overflow: 'hidden',
+        transform: open ? 'translateX(0)' : 'translateX(100%)',
+        transition: reducedMotion ? 'none' : 'transform .22s cubic-bezier(.2,.8,.2,1)',
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        padding: '16px 20px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: `0.5px solid ${divider}`,
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <GearIcon size={15} color={theme.panelText} />
+          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.02em' }}>Settings</span>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            border: 0, background: 'transparent', color: theme.panelText,
+            fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: '2px 6px',
+            opacity: 0.55, borderRadius: 6,
+          }}
+        >✕</button>
+      </div>
+
+      {/* Body: sidebar nav + content */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+
+        {/* Sidebar nav */}
+        <div style={{
+          width: 120,
+          flexShrink: 0,
+          padding: '10px 8px',
+          borderRight: `0.5px solid ${divider}`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}>
+          {[
+            { id: 'appearance', label: 'Appearance' },
+            { id: 'grid',       label: 'Grid' },
+            { id: 'physics',    label: 'Physics' },
+            { id: 'display',    label: 'Display' },
+            { id: 'palettes',   label: 'Palettes' },
+            { id: 'board',      label: 'Board' },
+          ].map((s) => (
+            <button key={s.id} style={sectionStyle(s.id)} onClick={() => setSection(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content area */}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          overflowY: 'auto',
+          padding: '16px 20px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 20,
+        }}>
+
+          {/* ── Appearance ── */}
+          {section === 'appearance' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Style">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {AESTHETIC_META.map((a) => {
+                    const active = t.aesthetic === a.id;
+                    const swatch = AESTHETIC_THEMES[a.id];
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => setTweak('aesthetic', a.id)}
+                        style={{
+                          appearance: 'none',
+                          border: active
+                            ? `2px solid ${theme.accentColor}`
+                            : `1.5px solid ${divider}`,
+                          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 10,
+                          background: active
+                            ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)')
+                            : 'transparent',
+                          cursor: 'default',
+                          padding: '10px 12px',
+                          textAlign: 'left',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                          transition: 'border-color .15s, background .15s',
+                        }}
+                      >
+                        {/* Mini preview strip */}
+                        <div style={{
+                          height: 28,
+                          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+                          background: swatch.bg,
+                          border: `1px solid ${divider}`,
+                          overflow: 'hidden',
+                          position: 'relative',
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          padding: 4,
+                          gap: 3,
+                        }}>
+                          {[0,1,2].map((i) => {
+                            const paletteColors = ['#00B5C9','#F2C200','#A459D1'];
+                            const fc = swatch.fillMode === 'tint' ? tint(paletteColors[i], 0.55)
+                              : swatch.fillMode === 'neon' ? darken(paletteColors[i], 0.72)
+                              : swatch.fillMode === 'terminal' ? 'rgba(0,20,8,0.85)'
+                              : paletteColors[i];
+                            return (
+                              <div key={i} style={{
+                                height: [14,20,12][i],
+                                flex: 1,
+                                background: fc,
+                                borderRadius: swatch.blockRadius || 2,
+                                border: swatch.blockBorder === '2px solid #000' ? '1px solid #000' : 'none',
+                              }} />
+                            );
+                          })}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: theme.panelText }}>{a.label}</div>
+                          <div style={{ fontSize: 9.5, color: subText, marginTop: 1 }}>{a.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </SettingsGroup>
+
+              <SettingsGroup label="Blocks">
+                <SettingsRow label="Flat blocks" sub="Remove shadows and deformation physics">
+                  <ToggleSwitch value={t.flatBlocks} onChange={(v) => setTweak('flatBlocks', v)} theme={theme} />
+                </SettingsRow>
+              </SettingsGroup>
+            </div>
+          )}
+
+          {/* ── Grid ── */}
+          {section === 'grid' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Snapping">
+                <SettingsRow label="Snap to grid" sub="Blocks lock to grid on release">
+                  <ToggleSwitch value={t.snapToGrid} onChange={(v) => setTweak('snapToGrid', v)} theme={theme} />
+                </SettingsRow>
+                <SettingsRow label="Show snap grid while dragging" sub="Highlights grid lines during drag">
+                  <ToggleSwitch value={t.showGridDuringDrag} onChange={(v) => setTweak('showGridDuringDrag', v)} theme={theme} />
+                </SettingsRow>
+              </SettingsGroup>
+              <SettingsGroup label="Display">
+                <SettingsRow label="Always-on background grid" sub="Subtle grid overlay at all times">
+                  <ToggleSwitch value={t.showGrid} onChange={(v) => setTweak('showGrid', v)} theme={theme} />
+                </SettingsRow>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, color: theme.panelText }}>Grid size</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input
+                      type="range" min={8} max={80} step={4} value={t.gridSize}
+                      onChange={(e) => setTweak('gridSize', Number(e.target.value))}
+                      style={{ flex: 1, accentColor: theme.accentColor }}
+                    />
+                    <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', opacity: 0.65, minWidth: 30, textAlign: 'right' }}>{t.gridSize}px</span>
+                  </div>
+                </div>
+              </SettingsGroup>
+            </div>
+          )}
+
+          {/* ── Physics ── */}
+          {section === 'physics' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Gravity">
+                <SettingsRow label="Gravity on" sub="Blocks fall and stack">
+                  <ToggleSwitch value={t.gravityOn} onChange={(v) => setTweak('gravityOn', v)} theme={theme} />
+                </SettingsRow>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>Gravity strength</span>
+                    <span style={{ fontSize: 11, opacity: 0.55, fontVariantNumeric: 'tabular-nums' }}>{t.gravityStrength}%</span>
+                  </div>
+                  <input
+                    type="range" min={20} max={200} step={5} value={t.gravityStrength}
+                    onChange={(e) => setTweak('gravityStrength', Number(e.target.value))}
+                    style={{ width: '100%', accentColor: theme.accentColor }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span style={{ fontSize: 9, opacity: 0.4 }}>Moon</span>
+                    <span style={{ fontSize: 9, opacity: 0.4 }}>Normal</span>
+                    <span style={{ fontSize: 9, opacity: 0.4 }}>Jupiter</span>
+                  </div>
+                </div>
+              </SettingsGroup>
+            </div>
+          )}
+
+          {/* ── Display ── */}
+          {section === 'display' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Visual effects">
+                <SettingsRow label="Glowing baseline" sub="Animated glow at the floor / do-now zone">
+                  <ToggleSwitch value={t.showActionableGlow} onChange={(v) => setTweak('showActionableGlow', v)} theme={theme} />
+                </SettingsRow>
+                <SettingsRow label="Group labels" sub="Show group outlines & labels">
+                  <ToggleSwitch value={t.labelGroups} onChange={(v) => setTweak('labelGroups', v)} theme={theme} />
+                </SettingsRow>
+              </SettingsGroup>
+            </div>
+          )}
+
+          {/* ── Palettes ── */}
+          {section === 'palettes' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Color palette">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {palettes.map((p) => {
+                    const sw = customSwatches[p.id] || p.swatches;
+                    const active = p.id === t.paletteId;
+                    return (
+                      <button key={p.id} onClick={() => setTweak('paletteId', p.id)} style={{
+                        appearance: 'none',
+                        border: active ? `2px solid ${theme.accentColor}` : `1.5px solid ${divider}`,
+                        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 8,
+                        background: active ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                        cursor: 'default',
+                        padding: '8px 10px',
+                        textAlign: 'left',
+                        transition: 'border-color .12s',
+                      }}>
+                        <div style={{ display: 'flex', gap: 2, height: 8, marginBottom: 5 }}>
+                          {sw.map((c, i) => <div key={i} style={{ flex: 1, background: c, borderRadius: 1 }} />)}
+                        </div>
+                        <div style={{ fontSize: 10.5, fontWeight: 600, color: theme.panelText, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                        {customSwatches[p.id] && <div style={{ fontSize: 9, opacity: 0.4, marginTop: 1 }}>customised</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </SettingsGroup>
+              <SettingsGroup label="Advanced">
+                <SettingsActionButton theme={theme} onClick={onOpenPalette} isDark={isDark}>
+                  Edit swatches & tags…
+                </SettingsActionButton>
+              </SettingsGroup>
+            </div>
+          )}
+
+          {/* ── Board ── */}
+          {section === 'board' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <SettingsGroup label="Actions">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <SettingsActionButton theme={theme} isDark={isDark} onClick={addTask}>
+                    + Drop random task
+                  </SettingsActionButton>
+                  <SettingsActionButton
+                    theme={theme}
+                    isDark={isDark}
+                    destructive
+                    onClick={() => {
+                      if (clearArmed) { clearBoard(); setClearArmed(false); }
+                      else { setClearArmed(true); }
+                    }}
+                  >
+                    {clearArmed ? 'Click again to confirm — clears all tasks' : 'Clear board'}
+                  </SettingsActionButton>
+                </div>
+              </SettingsGroup>
+              <SettingsGroup label="Backup">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <SettingsActionButton theme={theme} isDark={isDark} onClick={onExport}>
+                    Export to file…
+                  </SettingsActionButton>
+                  <SettingsActionButton
+                    theme={theme}
+                    isDark={isDark}
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  >
+                    Import from file…
+                  </SettingsActionButton>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files && e.target.files[0];
+                      if (f) onImport(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  {importError && (
+                    <div style={{
+                      fontSize: 11,
+                      color: '#ff6b6b',
+                      padding: '4px 2px',
+                      lineHeight: 1.4,
+                    }}>{importError}</div>
+                  )}
+                </div>
+              </SettingsGroup>
+              <SettingsGroup label="Keyboard shortcuts">
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px', fontSize: 11 }}>
+                  {[
+                    ['drag', 'move block'],
+                    ['drag corner', 'resize'],
+                    ['✓ tick', 'complete (floor only)'],
+                    ['double-click', 'edit title'],
+                    ['right-click', 'context menu'],
+                    ['drag empty', 'lasso select'],
+                    [formatShortcut('mod+n'), 'new task'],
+                    ['enter', 'complete selected'],
+                    ['delete / ⌫', 'delete selected'],
+                    ['g', 'group selected (2+)'],
+                    ['space', 'pause / resume gravity'],
+                    ['shift-click', 'add to selection'],
+                    ['?', 'help overlay'],
+                  ].map(([k, v]) => (
+                    <React.Fragment key={k}>
+                      <div style={{
+                        fontSize: 10, padding: '2px 6px',
+                        background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)',
+                        color: theme.panelText,
+                        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 4,
+                        fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap',
+                        alignSelf: 'start',
+                      }}>{k}</div>
+                      <div style={{ opacity: 0.6, alignSelf: 'center' }}>{v}</div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </SettingsGroup>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Settings sub-components ──────────────────────────────────────────────────
+
+function SettingsGroup({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.45 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SettingsRow({ label, sub, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500 }}>{label}</div>
+        {sub && <div style={{ fontSize: 10, opacity: 0.45, marginTop: 2 }}>{sub}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ToggleSwitch({ value, onChange, theme }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      style={{
+        flexShrink: 0,
+        width: 36,
+        height: 20,
+        borderRadius: 999,
+        border: 'none',
+        background: value ? theme.accentColor : (theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'),
+        position: 'relative',
+        cursor: 'default',
+        transition: 'background .15s',
+        padding: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute',
+        top: 3, left: value ? 17 : 3,
+        width: 14, height: 14,
+        borderRadius: '50%',
+        background: '#fff',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        transition: 'left .15s',
+      }} />
+    </button>
+  );
+}
+
+function SettingsActionButton({ theme, children, onClick, isDark, destructive }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        appearance: 'none',
+        border: destructive
+          ? `1.5px solid ${hover ? '#ef4444' : 'rgba(239,68,68,0.35)'}`
+          : `1.5px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 8,
+        background: destructive
+          ? (hover ? 'rgba(239,68,68,0.12)' : 'transparent')
+          : (hover ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : 'transparent'),
+        color: destructive ? '#ef4444' : theme.panelText,
+        fontFamily: theme.blockFontFamily,
+        fontSize: 12,
+        fontWeight: 500,
+        padding: '9px 14px',
+        cursor: 'default',
+        textAlign: 'left',
+        transition: 'background .12s, border-color .12s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── Scene ────────────────────────────────────────────────────────────────────
+
+function Scene() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const theme = { ...AESTHETIC_THEMES[t.aesthetic], aesthetic: t.aesthetic };
+
+  const [tags, setTags] = React.useState(DEFAULT_TAGS);
+  const tagsById = React.useMemo(() => {
+    const m = {};
+    for (const tg of tags) m[tg.id] = tg;
+    return m;
+  }, [tags]);
+
+  const [customSwatches, setCustomSwatches] = React.useState({});
+  const [importError, setImportError] = React.useState('');
+  const palette = React.useMemo(() => {
+    const base = PALETTES.find((p) => p.id === t.paletteId) || PALETTES[0];
+    const overrides = customSwatches[base.id];
+    return overrides ? { ...base, swatches: overrides } : base;
+  }, [t.paletteId, customSwatches]);
+
+  const sceneRef = React.useRef(null);
+  const worldRef = React.useRef(null);
+  const tasksRef = React.useRef(new Map());
+  const [, forceRender] = React.useReducer((x) => x + 1, 0);
+  const tick = forceRender;
+
+  const [selectedIds, setSelectedIds] = React.useState(new Set());
+  const [editingId, setEditingId] = React.useState(null);
+  const [completing, setCompleting] = React.useState(new Set());
+  const [deleting, setDeleting] = React.useState(new Set());
+  const reducedMotion = window.usePrefersReducedMotion();
+  const [lasso, setLasso] = React.useState(null);
+  const [groups, setGroups] = React.useState([]);
+  const [contextMenu, setContextMenu] = React.useState(null);
+  const [bounds, setBounds] = React.useState({ w: 1000, h: 700 });
+  const [glowPulse, setGlowPulse] = React.useState(0);
+  const [helpOpen, setHelpOpen] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settingsMounted, setSettingsMounted] = React.useState(false);
+  React.useEffect(() => {
+    if (settingsOpen) {
+      setSettingsMounted(true);
+    } else if (settingsMounted) {
+      const id = setTimeout(() => setSettingsMounted(false), 240);
+      return () => clearTimeout(id);
+    }
+  }, [settingsOpen]);
+  const [draggingAny, setDraggingAny] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = sceneRef.current;
+    const r = el.getBoundingClientRect();
+    const W = r.width, H = r.height;
+    setBounds({ w: W, h: H });
+    const world = new PhysicsWorld(W, H);
+    worldRef.current = world;
+
+    // Board starts empty; user adds tasks via + Task, Cmd+N, or right-click.
+  }, []);
+
+  React.useEffect(() => {
+    if (!sceneRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setBounds({ w: r.width, h: r.height });
+      const world = worldRef.current;
+      if (!world) return;
+      world.setBounds(r.width, r.height);
+      // Reclaim any block that's now outside the new bounds. Wake it so the
+      // physics step settles it correctly into the smaller area.
+      for (const b of world.bodies.values()) {
+        const maxX = Math.max(0, r.width - b.w);
+        const maxY = Math.max(0, r.height - b.h);
+        if (b.x > maxX) { b.x = maxX; b.vx = 0; b._snapped = false; b.restFrames = 0; }
+        if (b.y > maxY) { b.y = maxY; b.vy = 0; b._snapped = false; b.restFrames = 0; }
+      }
+    });
+    ro.observe(sceneRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    let raf;
+    let last = performance.now();
+    let active = true;
+    const loop = (now) => {
+      if (!active) return;
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const world = worldRef.current;
+      if (world) {
+        world.gravityOn = t.gravityOn;
+        world.snapEnabled = t.snapToGrid;
+        world.gridSize = t.gridSize;
+        if (window.__gravityScale !== t.gravityStrength / 100) {
+          window.__gravityScale = t.gravityStrength / 100;
+          window.PHYS.GRAVITY = 1800 * (t.gravityStrength / 100);
+        }
+        world.step(dt);
+        setGlowPulse((p) => (p + dt) % (Math.PI * 4));
+        forceRender();
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => { active = false; cancelAnimationFrame(raf); };
+  }, [t.gravityOn, t.gravityStrength]);
+
+  const getTask = (id) => tasksRef.current.get(id);
+  const updateTask = (id, patch) => {
+    const x = tasksRef.current.get(id);
+    if (!x) return;
+    tasksRef.current.set(id, { ...x, ...patch });
+  };
+
+  const onBlockPointerDown = (e, taskId) => {
+    if (e.button === 2) return;
+    e.stopPropagation();
+    const world = worldRef.current;
+    const body = world.get(taskId);
+    if (!body) return;
+
+    let nextSel;
+    if (e.shiftKey) {
+      nextSel = new Set(selectedIds);
+      if (nextSel.has(taskId)) nextSel.delete(taskId); else nextSel.add(taskId);
+    } else if (selectedIds.has(taskId) && selectedIds.size > 1) {
+      nextSel = new Set(selectedIds);
+    } else {
+      nextSel = new Set([taskId]);
+    }
+    setSelectedIds(nextSel);
+
+    const sceneRect = sceneRef.current.getBoundingClientRect();
+    const startMx = e.clientX - sceneRect.left;
+    const startMy = e.clientY - sceneRect.top;
+    const dragging = [...nextSel].map((id) => {
+      const b = world.get(id);
+      return b ? { id, ox: b.x - startMx, oy: b.y - startMy, body: b } : null;
+    }).filter(Boolean);
+
+    dragging.forEach((d) => { d.body.dragging = true; d.body.vx = 0; d.body.vy = 0; });
+    setDraggingAny(true);
+
+    let moved = false;
+    let lastMx = startMx, lastMy = startMy;
+    let lastT = performance.now();
+
+    const move = (ev) => {
+      const mx = ev.clientX - sceneRect.left;
+      const my = ev.clientY - sceneRect.top;
+      if (Math.abs(mx - startMx) + Math.abs(my - startMy) > 3) moved = true;
+      dragging.forEach((d) => {
+        let nx = mx + d.ox;
+        let ny = my + d.oy;
+        if (t.snapToGrid) { nx = snapTo(nx, t.gridSize); ny = snapTo(ny, t.gridSize); }
+        d.body.x = nx; d.body.y = ny;
+      });
+      const now = performance.now();
+      const dt = Math.max(0.001, (now - lastT) / 1000);
+      const vx = (mx - lastMx) / dt;
+      const vy = (my - lastMy) / dt;
+      dragging.forEach((d) => { d.body._lastVx = vx; d.body._lastVy = vy; });
+      lastMx = mx; lastMy = my; lastT = now;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      dragging.forEach((d) => {
+        d.body.dragging = false;
+        if (t.snapToGrid) {
+          d.body.x = snapTo(d.body.x, t.gridSize);
+          d.body.y = snapTo(d.body.y, t.gridSize);
+          d.body.vx = 0; d.body.vy = 0;
+        } else {
+          d.body.vx = Math.max(-1500, Math.min(1500, (d.body._lastVx || 0) * 0.6));
+          d.body.vy = Math.max(-1500, Math.min(1500, (d.body._lastVy || 0) * 0.6));
+        }
+      });
+      setDraggingAny(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const onBlockResizeStart = (e, taskId, dir) => {
+    e.stopPropagation(); e.preventDefault();
+    const world = worldRef.current;
+    const body = world.get(taskId);
+    if (!body) return;
+    const sx = e.clientX, sy = e.clientY;
+    const sw = body.w, sh = body.h;
+    const startX = body.x, startY = body.y;
+    body.dragging = true; body.vx = 0; body.vy = 0; body.snapAnim = false;
+    setDraggingAny(true);
+
+    const minW = t.gridSize * 2, minH = t.gridSize, maxW = 600, maxH = 400;
+    const hasN = dir.includes('n'), hasS = dir.includes('s');
+    const hasW = dir.includes('w'), hasE = dir.includes('e');
+
+    const move = (ev) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      let nx = startX, ny = startY, nw = sw, nh = sh;
+      if (hasE) nw = sw + dx;
+      if (hasW) { nw = sw - dx; nx = startX + dx; }
+      if (hasS) nh = sh + dy;
+      if (hasN) { nh = sh - dy; ny = startY + dy; }
+      const clampedW = Math.max(minW, Math.min(maxW, nw));
+      const clampedH = Math.max(minH, Math.min(maxH, nh));
+      if (hasW) nx = startX + (sw - clampedW);
+      if (hasN) ny = startY + (sh - clampedH);
+      nw = clampedW; nh = clampedH;
+      if (t.snapToGrid) {
+        const g = t.gridSize;
+        if (hasE) { const right = nx + nw; nw = Math.max(minW, snapTo(right, g) - nx); }
+        if (hasW) { const right = startX + sw; nx = snapTo(nx, g); nw = Math.max(minW, right - nx); }
+        if (hasS) { const bottom = ny + nh; nh = Math.max(minH, snapTo(bottom, g) - ny); }
+        if (hasN) { const bottom = startY + sh; ny = snapTo(ny, g); nh = Math.max(minH, bottom - ny); }
+      }
+      body.x = nx; body.y = ny; body.w = nw; body.h = nh;
+    };
+    const up = () => {
+      body.dragging = false;
+      if (t.snapToGrid) {
+        body.x = snapTo(body.x, t.gridSize); body.y = snapTo(body.y, t.gridSize);
+        body.w = snapMinTo(body.w, t.gridSize); body.h = snapMinTo(body.h, t.gridSize);
+        body.snapAnim = true;
+        setTimeout(() => { body.snapAnim = false; forceRender(); }, 220);
+      }
+      body.vx = 0; body.vy = 0;
+      setDraggingAny(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const onScenePointerDown = (e) => {
+    if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
+    if (e.button !== 0) return;
+    setSelectedIds(new Set()); setEditingId(null);
+    const sceneRect = sceneRef.current.getBoundingClientRect();
+    const sx = e.clientX - sceneRect.left, sy = e.clientY - sceneRect.top;
+    setLasso({ x1: sx, y1: sy, x2: sx, y2: sy });
+    const move = (ev) => {
+      const mx = ev.clientX - sceneRect.left, my = ev.clientY - sceneRect.top;
+      setLasso({ x1: sx, y1: sy, x2: mx, y2: my });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setLasso((curr) => {
+        if (!curr) return null;
+        const x1 = Math.min(curr.x1, curr.x2), y1 = Math.min(curr.y1, curr.y2);
+        const x2 = Math.max(curr.x1, curr.x2), y2 = Math.max(curr.y1, curr.y2);
+        const w = worldRef.current;
+        if (w) {
+          const inLasso = new Set();
+          for (const b of w.bodies.values()) {
+            if (b.x + b.w > x1 && b.x < x2 && b.y + b.h > y1 && b.y < y2) inLasso.add(b.id);
+          }
+          if (inLasso.size > 0) setSelectedIds(inLasso);
+        }
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const completeTask = (id) => {
+    setCompleting((c) => new Set(c).add(id));
+    setTimeout(() => {
+      const world = worldRef.current;
+      if (world) world.remove(id);
+      tasksRef.current.delete(id);
+      setCompleting((c) => { const n = new Set(c); n.delete(id); return n; });
+      setSelectedIds((c) => { const n = new Set(c); n.delete(id); return n; });
+      setGroups((gs) => gs.map((g) => ({ ...g, taskIds: g.taskIds.filter((tid) => tid !== id) })).filter((g) => g.taskIds.length >= 2));
+    }, 350);
+  };
+
+  const deleteTask = (id) => {
+    if (reducedMotion) {
+      const world = worldRef.current;
+      if (world) world.remove(id);
+      tasksRef.current.delete(id);
+      setSelectedIds((c) => { const n = new Set(c); n.delete(id); return n; });
+      setGroups((gs) => gs.map((g) => ({ ...g, taskIds: g.taskIds.filter((tid) => tid !== id) })).filter((g) => g.taskIds.length >= 2));
+      forceRender();
+      return;
+    }
+    setDeleting((c) => new Set(c).add(id));
+    setTimeout(() => {
+      const world = worldRef.current;
+      if (world) world.remove(id);
+      tasksRef.current.delete(id);
+      setDeleting((c) => { const n = new Set(c); n.delete(id); return n; });
+      setSelectedIds((c) => { const n = new Set(c); n.delete(id); return n; });
+      setGroups((gs) => gs.map((g) => ({ ...g, taskIds: g.taskIds.filter((tid) => tid !== id) })).filter((g) => g.taskIds.length >= 2));
+    }, 180);
+  };
+
+  const toggleWaiting = (id) => {
+    const tk = getTask(id);
+    if (!tk) return;
+    updateTask(id, { waiting: !tk.waiting });
+    forceRender();
+  };
+
+  const addTask = (overrides = {}) => {
+    const id = nextId();
+    const tag0 = tags[0]?.id || 'eng';
+    const task = { id, title: overrides.title || 'New task', tag: overrides.tag || tag0, size: overrides.size || 'M', waiting: false, done: false, ...overrides };
+    tasksRef.current.set(id, task);
+    const sz = SIZE_PRESETS[task.size];
+    const w = worldRef.current;
+    if (!w) return;
+    const g = t.gridSize;
+    const cols = Math.max(1, Math.floor((bounds.w - sz.w - g * 2) / g));
+    const col = Math.floor(Math.random() * cols);
+    const x = g + col * g;
+    const y = -sz.h - g;
+    w.add({ id, x, y, w: sz.w, h: sz.h, vx: 0, vy: 0 });
+    setEditingId(id);
+    setSelectedIds(new Set([id]));
+  };
+
+  const groupSelected = (label) => {
+    const ids = [...selectedIds];
+    if (ids.length < 2) return;
+    setGroups((gs) => [...gs, { id: 'g' + Date.now(), label: label || 'group', taskIds: ids, justCreated: !label }]);
+  };
+
+  const handleUpdateTags = (newTags) => {
+    if (newTags.length === 0) return;
+    const validIds = new Set(newTags.map((tg) => tg.id));
+    const fallback = newTags[0].id;
+    for (const [id, tk] of tasksRef.current.entries()) {
+      if (!validIds.has(tk.tag)) tasksRef.current.set(id, { ...tk, tag: fallback });
+    }
+    setTags(newTags);
+  };
+
+  const clearBoard = () => {
+    const w = worldRef.current;
+    if (!w) return;
+    for (const id of [...w.bodies.keys()]) w.remove(id);
+    tasksRef.current.clear();
+    setGroups([]); setSelectedIds(new Set());
+  };
+
+  const handleExport = () => {
+    const world = worldRef.current;
+    const tasks = [];
+    for (const [id, task] of tasksRef.current.entries()) {
+      const body = world && world.get(id);
+      tasks.push({
+        ...task,
+        x: body ? body.x : 0,
+        y: body ? body.y : 0,
+        w: body ? body.w : 250,
+        h: body ? body.h : 100,
+      });
+    }
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tasks,
+      tags,
+      groups,
+      customSwatches,
+      tweaks: { ...t },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `task-tetris-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async (file) => {
+    setImportError('');
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.version !== 1) throw new Error(`Unsupported version: ${data.version}`);
+      if (!Array.isArray(data.tasks)) throw new Error('Missing tasks array');
+      if (!Array.isArray(data.tags)) throw new Error('Missing tags array');
+
+      const w = worldRef.current;
+      if (w) for (const id of [...w.bodies.keys()]) w.remove(id);
+      tasksRef.current.clear();
+
+      for (const task of data.tasks) {
+        const { x = 0, y = 0, w: bw = 250, h: bh = 100, ...rest } = task;
+        tasksRef.current.set(task.id, rest);
+        if (w) w.add({ id: task.id, x, y, w: bw, h: bh });
+      }
+      setTags(data.tags);
+      setGroups(Array.isArray(data.groups) ? data.groups : []);
+      setCustomSwatches(data.customSwatches && typeof data.customSwatches === 'object' ? data.customSwatches : {});
+      if (data.tweaks && typeof data.tweaks === 'object') setTweak(data.tweaks);
+      setSelectedIds(new Set());
+      forceRender();
+    } catch (err) {
+      setImportError('Import failed: ' + (err.message || 'invalid file'));
+    }
+  };
+
+  const openBlockContext = (e, taskId) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!selectedIds.has(taskId)) setSelectedIds(new Set([taskId]));
+    const task = getTask(taskId);
+    if (!task) return;
+    const ids = selectedIds.has(taskId) && selectedIds.size > 1 ? [...selectedIds] : [taskId];
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: ids.length > 1 ? `Complete ${ids.length} tasks` : 'Complete', shortcut: '⏎', onClick: () => ids.forEach(completeTask) },
+        { label: 'Edit title', onClick: () => setEditingId(taskId), disabled: ids.length > 1 },
+        { label: task.waiting ? 'Unmark as waiting' : 'Mark as waiting', onClick: () => ids.forEach(toggleWaiting) },
+        { divider: true },
+        { label: 'Cycle tag', onClick: () => {
+          const keys = tags.map((tg) => tg.id);
+          ids.forEach((id) => {
+            const tk = getTask(id);
+            if (tk) { const i = keys.indexOf(tk.tag); updateTask(id, { tag: keys[(i + 1) % keys.length] }); }
+          });
+          forceRender();
+        }},
+        { label: 'Cycle size', onClick: () => {
+          const keys = Object.keys(SIZE_PRESETS);
+          ids.forEach((id) => {
+            const tk = getTask(id);
+            const body = worldRef.current.get(id);
+            if (tk && body) {
+              const i = keys.indexOf(tk.size);
+              const next = keys[(i + 1) % keys.length];
+              const sz = SIZE_PRESETS[next];
+              updateTask(id, { size: next });
+              body.w = sz.w; body.h = sz.h;
+            }
+          });
+          forceRender();
+        }},
+        { divider: true },
+        ids.length >= 2 ? { label: 'Group selected', onClick: () => groupSelected() } : null,
+        { label: ids.length > 1 ? `Delete ${ids.length} tasks` : 'Delete', shortcut: '⌫', onClick: () => ids.forEach(deleteTask) },
+      ].filter(Boolean),
+    });
+  };
+
+  const openSceneContext = (e) => {
+    if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Add task here', onClick: () => addTask() },
+        { label: t.gravityOn ? 'Pause gravity' : 'Resume gravity', shortcut: 'space', onClick: () => setTweak('gravityOn', !t.gravityOn) },
+        { divider: true },
+        { label: 'Settings…', onClick: () => setSettingsOpen(true) },
+        { label: 'Manage palettes & tags…', onClick: () => setPaletteOpen(true) },
+        { divider: true },
+        { label: 'Drop a wave (+5 random)', onClick: () => {
+          const tagIds = tags.map((tg) => tg.id);
+          const sizes = ['XS','S','M','L'];
+          for (let i = 0; i < 5; i++) {
+            setTimeout(() => addTask({
+              title: ['Triage bug', 'Quick review', 'Sync notes', 'Doc update', 'Spike'][i],
+              tag: tagIds[Math.floor(Math.random() * tagIds.length)],
+              size: sizes[Math.floor(Math.random() * sizes.length)],
+            }), i * 80);
+          }
+        }},
+      ],
+    });
+  };
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (editingId) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (paletteOpen || settingsOpen) return;
+      if (e.key === ' ') { e.preventDefault(); setTweak('gravityOn', !t.gravityOn); }
+      if (e.key === 'Enter' && selectedIds.size > 0) { e.preventDefault(); [...selectedIds].forEach(completeTask); }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectedIds.size > 0) { e.preventDefault(); [...selectedIds].forEach(deleteTask); }
+      if (e.key === 'g' && selectedIds.size >= 2) { e.preventDefault(); groupSelected(); }
+      if (e.key === 'n' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addTask(); }
+      if (e.key === 'Escape') { setSelectedIds(new Set()); setContextMenu(null); setSettingsOpen(false); }
+      if (e.key === '?') setHelpOpen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [t.gravityOn, selectedIds, editingId, paletteOpen, settingsOpen, tags]);
+
+  const groupsWithBbox = React.useMemo(() => {
+    const w = worldRef.current;
+    if (!w) return [];
+    return groups.map((g) => {
+      const bodies = g.taskIds.map((id) => w.get(id)).filter(Boolean);
+      if (bodies.length < 2) return null;
+      const x1 = Math.min(...bodies.map((b) => b.x));
+      const y1 = Math.min(...bodies.map((b) => b.y));
+      const x2 = Math.max(...bodies.map((b) => b.x + b.w));
+      const y2 = Math.max(...bodies.map((b) => b.y + b.h));
+      return { ...g, bbox: { x1, y1, x2, y2 } };
+    }).filter(Boolean);
+  }, [groups, glowPulse]);
+
+  const world = worldRef.current;
+  const bodies = world ? [...world.bodies.values()] : [];
+  const pulse = 0.7 + 0.3 * Math.sin(glowPulse * 1.5);
+  const showGridStrong = t.snapToGrid && t.showGridDuringDrag && draggingAny;
+  const isDark = theme.aesthetic === 'playful' || theme.aesthetic === 'neon' || theme.aesthetic === 'terminal';
+  const compact = bounds.w < 900;
+  const tight = bounds.w < 600;
+  const actionableCount = bodies.filter((b) => world && world.isActionable(b.id)).length;
+  const newTaskShortcut = formatShortcut('mod+n');
+
+  return (
+    <div
+      ref={sceneRef}
+      onPointerDown={onScenePointerDown}
+      onContextMenu={openSceneContext}
+      style={{
+        position: 'fixed', inset: 0, overflow: 'hidden',
+        background: theme.bg,
+        cursor: lasso ? 'crosshair' : 'default',
+        filter: t.gravityOn ? 'none' : 'saturate(0.85)',
+        transition: reducedMotion ? 'none' : 'filter .25s ease',
+      }}
+    >
+      {/* Background grid */}
+      {t.showGrid && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `linear-gradient(${theme.bgGrid} 1px, transparent 1px), linear-gradient(90deg, ${theme.bgGrid} 1px, transparent 1px)`,
+          backgroundSize: `${t.gridSize}px ${t.gridSize}px`,
+          pointerEvents: 'none',
+          maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
+        }} />
+      )}
+
+      {showGridStrong && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `linear-gradient(${theme.bgGridStrong} 1px, transparent 1px), linear-gradient(90deg, ${theme.bgGridStrong} 1px, transparent 1px)`,
+          backgroundSize: `${t.gridSize}px ${t.gridSize}px`,
+          pointerEvents: 'none',
+          transition: 'opacity .15s',
+        }} />
+      )}
+
+      {/* Floor */}
+      <div data-scene-layer="1" style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 4,
+        background: theme.floor,
+        borderTop: theme.aesthetic === 'brutalist' ? '4px solid #000' : 'none',
+        pointerEvents: 'none',
+      }} />
+      {t.showActionableGlow && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, height: 80,
+          background: `linear-gradient(to top, ${theme.floorGlow} 0%, transparent 100%)`,
+          opacity: (0.18 + 0.07 * pulse) * (t.gravityOn ? 1 : 0.35),
+          pointerEvents: 'none',
+          mixBlendMode: theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'multiply' : 'screen',
+          transition: reducedMotion ? 'none' : 'opacity .25s ease',
+        }} />
+      )}
+      {t.showActionableGlow && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', left: 0, right: 0, bottom: 4, height: 1,
+          background: theme.floorGlow,
+          boxShadow: `0 0 ${12 + 8 * pulse}px ${theme.floorGlow}, 0 0 ${4 + 2 * pulse}px ${theme.floorGlow}`,
+          opacity: (0.6 + 0.3 * pulse) * (t.gravityOn ? 1 : 0.35),
+          pointerEvents: 'none',
+          transition: reducedMotion ? 'none' : 'opacity .25s ease',
+        }} />
+      )}
+
+      {/* Empty-board floor rule — strengthens the "do-now zone" metaphor before any block has landed */}
+      {bodies.length === 0 && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', left: 0, right: 0, bottom: 24, height: 1,
+          borderTop: `1px dashed ${theme.floorGlow}`,
+          opacity: 0.4,
+          pointerEvents: 'none',
+          transition: reducedMotion ? 'none' : 'opacity .25s ease',
+        }} />
+      )}
+      <div data-scene-layer="1" style={{
+        position: 'absolute', left: 16, bottom: 12,
+        fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: isDark
+          ? `rgba(255,255,255,${bodies.length === 0 ? 0.7 : 0.45})`
+          : `rgba(20,18,12,${bodies.length === 0 ? 0.7 : 0.45})`,
+        fontFamily: theme.blockFontFamily,
+        pointerEvents: 'none',
+        transition: reducedMotion ? 'none' : 'color .25s ease',
+      }}>
+        ↓ Actionable now
+      </div>
+
+      {/* Group labels */}
+      {t.labelGroups && groupsWithBbox.map((g) => (
+        <GroupLabel key={g.id} group={g} theme={theme}
+          onRename={(label) => setGroups((gs) => gs.map((x) => x.id === g.id ? { ...x, label, justCreated: false } : x))}
+          onDelete={() => setGroups((gs) => gs.filter((x) => x.id !== g.id))}
+        />
+      ))}
+
+      {/* Empty state card */}
+      {bodies.length === 0 && (
+        <div data-scene-layer="1" style={{
+          position: 'absolute', left: '50%', top: '50%',
+          transform: 'translate(-50%, -50%)',
+          padding: '22px 28px',
+          background: theme.panelBg,
+          border: `0.5px solid ${theme.panelBorder}`,
+          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 12,
+          color: theme.panelText,
+          fontFamily: theme.blockFontFamily,
+          maxWidth: 340,
+          textAlign: 'center',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: isDark ? '0 18px 60px rgba(0,0,0,0.4)' : '0 18px 60px rgba(0,0,0,0.10)',
+          opacity: 0.95,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+            Nothing on deck
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.65, lineHeight: 1.5 }}>
+            Press{' '}
+            <span style={{
+              padding: '1px 6px',
+              background: theme.chipBg,
+              borderRadius: 4,
+              fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+              fontSize: 10,
+            }}>+ Task</span>
+            {' '}or{' '}
+            <span style={{
+              padding: '1px 6px',
+              background: theme.chipBg,
+              borderRadius: 4,
+              fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+              fontSize: 10,
+            }}>{newTaskShortcut}</span>
+            {' '}to add one. Right-click anywhere for more.
+          </div>
+        </div>
+      )}
+
+      {/* Blocks */}
+      {bodies.map((body) => {
+        const task = tasksRef.current.get(body.id);
+        if (!task) return null;
+        const isActionable = world ? world.isActionable(body.id) : false;
+        return (
+          <Block
+            key={body.id}
+            task={task} body={body} theme={theme}
+            palette={palette} tagsById={tagsById}
+            selected={selectedIds.has(body.id)}
+            completing={completing.has(body.id)}
+            deleting={deleting.has(body.id)}
+            editing={editingId === body.id}
+            isActionable={isActionable}
+            flatBlocks={t.flatBlocks}
+            glowPulse={glowPulse}
+            showActionableGlow={t.showActionableGlow}
+            reducedMotion={reducedMotion}
+            onPointerDown={(e) => onBlockPointerDown(e, body.id)}
+            onResizeStart={(e, dir) => onBlockResizeStart(e, body.id, dir)}
+            onContextMenu={(e) => openBlockContext(e, body.id)}
+            onDoubleClick={() => setEditingId(body.id)}
+            onComplete={() => completeTask(body.id)}
+            onCommitEdit={(v) => { updateTask(body.id, { title: v || 'Untitled' }); setEditingId(null); forceRender(); }}
+            onCancelEdit={() => setEditingId(null)}
+          />
+        );
+      })}
+
+      {/* Lasso */}
+      {lasso && (
+        <div style={{
+          position: 'absolute',
+          left: Math.min(lasso.x1, lasso.x2), top: Math.min(lasso.y1, lasso.y2),
+          width: Math.abs(lasso.x2 - lasso.x1), height: Math.abs(lasso.y2 - lasso.y1),
+          background: `${theme.accentColor}15`,
+          border: `1px dashed ${theme.accentColor}`,
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {/* Header bar */}
+      <div data-scene-layer="1" style={{
+        position: 'absolute', left: 0, right: 0, top: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        pointerEvents: 'none', fontFamily: theme.blockFontFamily,
+        background: theme.topBarBg,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: `0.5px solid ${theme.topBarBorder}`,
+        padding: '0 16px',
+        height: 48,
+        zIndex: 200,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto', minWidth: 0 }}>
+          {!compact && (
+            <div style={{
+              fontSize: 13, fontWeight: 700, letterSpacing: '0.04em',
+              color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(20,18,12,0.85)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }} title="Ship the new pricing page">
+              <span style={{ opacity: 0.45 }}>Project ·</span> Ship the new pricing page
+            </div>
+          )}
+          <div style={{
+            fontSize: 10.5, padding: '3px 8px',
+            background: theme.chipBg, color: theme.chipFg,
+            borderRadius: theme.aesthetic === 'brutalist' ? 0 : 999,
+            fontWeight: 600, letterSpacing: '0.05em',
+            whiteSpace: 'nowrap',
+          }}
+          title={`${bodies.length} blocks · ${actionableCount} actionable`}
+          >
+            {compact
+              ? `${bodies.length}/${actionableCount}`
+              : `${bodies.length} blocks · ${actionableCount} actionable`}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'auto' }}>
+          <ToolbarButton theme={theme} isDark={isDark} onClick={() => addTask()} title={`New task (${newTaskShortcut})`} ariaLabel="New task" iconOnly={tight}>
+            {tight ? '+' : '+ Task'}
+          </ToolbarButton>
+          {!tight && (
+            <ToolbarButton theme={theme} isDark={isDark} onClick={() => setPaletteOpen(true)} title="Choose palette" ariaLabel="Choose palette">
+              <PaletteSwatchPreview palette={palette} />
+              {!compact && <span>{palette.name}</span>}
+            </ToolbarButton>
+          )}
+          <ToolbarButton
+            theme={theme}
+            isDark={isDark}
+            onClick={() => setTweak('gravityOn', !t.gravityOn)}
+            active={!t.gravityOn}
+            title={t.gravityOn ? 'Pause gravity (space)' : 'Resume gravity (space)'}
+            ariaLabel={t.gravityOn ? 'Pause gravity' : 'Resume gravity'}
+            iconOnly={tight}
+          >
+            {tight ? (t.gravityOn ? '⏸' : '▶') : (t.gravityOn ? 'Pause' : 'Resume')}
+          </ToolbarButton>
+          <ToolbarButton theme={theme} isDark={isDark} onClick={() => setHelpOpen((v) => !v)} title="Help (?)" ariaLabel="Help" iconOnly>?</ToolbarButton>
+          {/* Gear / settings button */}
+          <ToolbarButton theme={theme} isDark={isDark} onClick={() => setSettingsOpen((v) => !v)} active={settingsOpen} title="Settings" ariaLabel="Settings" iconOnly>
+            <GearIcon size={14} color={
+              settingsOpen
+                ? (isDark ? '#0a0e18' : '#fff')
+                : (isDark ? 'rgba(255,255,255,0.85)' : 'rgba(20,18,12,0.85)')
+            } />
+          </ToolbarButton>
+        </div>
+      </div>
+
+      <div data-scene-layer="1" style={{
+        position: 'absolute', right: 16, bottom: 12,
+        fontSize: 10,
+        color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(20,18,12,0.4)',
+        fontFamily: theme.blockFontFamily, pointerEvents: 'none',
+        textAlign: 'right', lineHeight: 1.5,
+      }}>
+        right-click for menu · double-click to edit · drag corner to resize
+      </div>
+
+      {helpOpen && <HelpOverlay theme={theme} isDark={isDark} onClose={() => setHelpOpen(false)} gridSize={t.gridSize} />}
+
+      {paletteOpen && (
+        <PaletteManager
+          theme={theme} palettes={PALETTES}
+          currentPaletteId={t.paletteId} onPickPalette={(id) => setTweak('paletteId', id)}
+          tags={tags} onUpdateTags={handleUpdateTags}
+          customSwatches={customSwatches} onUpdateCustomSwatches={setCustomSwatches}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
+
+      {settingsMounted && (
+        <SettingsPage
+          open={settingsOpen}
+          reducedMotion={reducedMotion}
+          t={t} setTweak={setTweak} theme={theme}
+          tags={tags} onUpdateTags={handleUpdateTags}
+          palettes={PALETTES} customSwatches={customSwatches} onUpdateCustomSwatches={setCustomSwatches}
+          addTask={() => addTask({
+            title: ['Reply to Slack', 'Doc cleanup', 'Weekly review', 'Hotfix'][Math.floor(Math.random() * 4)],
+            tag: tags[Math.floor(Math.random() * tags.length)].id,
+            size: ['XS','S','M','L'][Math.floor(Math.random() * 4)],
+          })}
+          clearBoard={clearBoard}
+          onExport={handleExport}
+          onImport={handleImport}
+          importError={importError}
+          onOpenPalette={() => { setPaletteOpen(true); }}
+          onClose={() => { setSettingsOpen(false); setImportError(''); }}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x} y={contextMenu.y} items={contextMenu.items}
+          theme={theme} onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* TweaksPanel still wired up (toolbar toggle), but empty — settings live in the gear page */}
+      <TweaksPanel title="Tweaks" />
+    </div>
+  );
+}
+
+// ── Toolbar button ───────────────────────────────────────────────────────────
+
+function ToolbarButton({ theme, children, onClick, active, isDark, title, ariaLabel, iconOnly }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={ariaLabel || title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        appearance: 'none',
+        border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.topBarBorder}` : `0.5px solid ${theme.topBarBorder}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 7,
+        background: active
+          ? theme.accentColor
+          : (hover ? (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)') : 'transparent'),
+        color: active
+          ? (isDark ? '#0a0e18' : '#fff')
+          : (isDark ? 'rgba(255,255,255,0.85)' : 'rgba(20,18,12,0.85)'),
+        font: 'inherit',
+        fontSize: 11.5, fontWeight: 600, letterSpacing: '0.02em',
+        padding: iconOnly ? '6px 8px' : '6px 12px',
+        cursor: 'default',
+        transition: 'background .12s, color .12s',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PaletteSwatchPreview({ palette }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 1, height: 12, borderRadius: 2, overflow: 'hidden' }}>
+      {palette.swatches.map((c, i) => (
+        <span key={i} style={{ width: 4, height: 12, background: c }} />
+      ))}
+    </span>
+  );
+}
+
+function HelpOverlay({ theme, isDark, onClose, gridSize }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(4px)', fontFamily: theme.blockFontFamily,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: theme.panelBg,
+          border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 14,
+          boxShadow: theme.aesthetic === 'brutalist' ? '6px 6px 0 #000' : '0 24px 80px rgba(0,0,0,.3)',
+          padding: 24, width: 460,
+          color: theme.panelText,
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, letterSpacing: '0.02em' }}>
+          Task Tetris — how it works
+        </div>
+        <div style={{ fontSize: 12, lineHeight: 1.6, opacity: 0.85, marginBottom: 16 }}>
+          Tasks fall and stack. Whatever <b>touches the floor</b> is what you can do right now —
+          those blocks get a tick (✓) you can click to complete. Stuff above falls into place.
+          Blocks snap to a {gridSize}px grid when you drag or resize.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', fontSize: 11.5 }}>
+          {[
+            ['drag', 'move (snaps to grid)'],
+            ['drag corner', 'resize (snaps to grid)'],
+            ['tick (✓)', 'complete (bottom-row only)'],
+            ['double-click', 'edit title'],
+            ['right-click', 'menu'],
+            ['drag empty area', 'lasso select'],
+            [formatShortcut('mod+n'), 'new task'],
+            ['enter', 'complete selected'],
+            ['delete / ⌫', 'delete selected'],
+            ['g', 'group selected (2+)'],
+            ['space', 'pause / resume gravity'],
+            ['shift-click', 'add to selection'],
+          ].map(([k, v]) => (
+            <React.Fragment key={k}>
+              <div style={{
+                fontSize: 10, padding: '2px 6px',
+                background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)',
+                color: theme.panelText,
+                borderRadius: theme.aesthetic === 'brutalist' ? 0 : 4,
+                fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap', alignSelf: 'start',
+              }}>{k}</div>
+              <div style={{ opacity: 0.75 }}>{v}</div>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{ marginTop: 16, fontSize: 11, opacity: 0.55 }}>Click anywhere to close.</div>
+      </div>
+    </div>
+  );
+}
+
+window.Scene = Scene;
+
+</script>
+
+<script type="text/babel" data-presets="react">
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<window.Scene />);
+</script>
+</body>
+</html>
