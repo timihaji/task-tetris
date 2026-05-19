@@ -739,26 +739,7 @@ window.PHYS = PHYS;
 // nicely into common block sizes.
 const GRID = 50; // default; user can change via tweaks. Anywhere a snap is needed at runtime, prefer the value from tweaks.
 
-// ── Tag identities ───────────────────────────────────────────────────────────
-// Tags are *roles*; their visual color comes from the active PALETTE,
-// resolved by tag.colorIndex. Editable via the Tag Manager.
-const DEFAULT_TAGS = [
-  { id: 'design',   name: 'design',   colorIndex: 0 },
-  { id: 'eng',      name: 'eng',      colorIndex: 1 },
-  { id: 'research', name: 'research', colorIndex: 2 },
-  { id: 'copy',     name: 'copy',     colorIndex: 3 },
-  { id: 'ops',      name: 'ops',      colorIndex: 4 },
-  { id: 'meeting',  name: 'meeting',  colorIndex: 5 },
-];
-
-// Estimate -> default block dimensions (px), all multiples of GRID(50).
-const SIZE_PRESETS = {
-  XS: { w: 150, h: 50  },
-  S:  { w: 200, h: 100 },
-  M:  { w: 250, h: 100 },
-  L:  { w: 300, h: 100 },
-  XL: { w: 350, h: 150 },
-};
+// Block colors are stored per-task as a hex string (see INITIAL_TASKS below).
 
 // ── 20 palettes ──────────────────────────────────────────────────────────────
 // Each palette has 6 swatches (matching tag count). Curated sets — not random.
@@ -809,18 +790,18 @@ const PALETTES = [
 
 // ── Project: "Ship the new pricing page" ─────────────────────────────────────
 const INITIAL_TASKS = [
-  { id: 't1',  title: 'Pricing model spreadsheet', tag: 'ops',      size: 'M',  waiting: false, done: false },
-  { id: 't2',  title: 'Competitor teardown',       tag: 'research', size: 'S',  waiting: false, done: false },
-  { id: 't3',  title: 'Lock messaging hierarchy',  tag: 'copy',     size: 'M',  waiting: false, done: false },
-  { id: 't4',  title: 'Wireframe: 3-tier layout',  tag: 'design',   size: 'L',  waiting: false, done: false },
-  { id: 't5',  title: 'Hi-fi mocks + dark mode',   tag: 'design',   size: 'L',  waiting: false, done: false },
-  { id: 't6',  title: 'Legal review on copy',      tag: 'ops',      size: 'S',  waiting: true,  done: false },
-  { id: 't7',  title: 'Build /pricing route',      tag: 'eng',      size: 'M',  waiting: false, done: false },
-  { id: 't8',  title: 'Stripe price IDs',          tag: 'eng',      size: 'S',  waiting: false, done: false },
-  { id: 't9',  title: 'Plan toggle interaction',   tag: 'eng',      size: 'M',  waiting: false, done: false },
-  { id: 't10', title: 'QA on staging',             tag: 'eng',      size: 'S',  waiting: false, done: false },
-  { id: 't11', title: 'Launch announcement',       tag: 'copy',     size: 'M',  waiting: false, done: false },
-  { id: 't12', title: 'Schedule launch sync',      tag: 'meeting',  size: 'XS', waiting: false, done: false },
+  { id: 't1',  title: 'Pricing model spreadsheet', color: '#F26B3A', waiting: false, done: false },
+  { id: 't2',  title: 'Competitor teardown',       color: '#A459D1', waiting: false, done: false },
+  { id: 't3',  title: 'Lock messaging hierarchy',  color: '#F2C200', waiting: false, done: false },
+  { id: 't4',  title: 'Wireframe: 3-tier layout',  color: '#00B5C9', waiting: false, done: false },
+  { id: 't5',  title: 'Hi-fi mocks + dark mode',   color: '#00B5C9', waiting: false, done: false },
+  { id: 't6',  title: 'Legal review on copy',      color: '#F26B3A', waiting: true,  done: false },
+  { id: 't7',  title: 'Build /pricing route',      color: '#34C759', waiting: false, done: false },
+  { id: 't8',  title: 'Stripe price IDs',          color: '#34C759', waiting: false, done: false },
+  { id: 't9',  title: 'Plan toggle interaction',   color: '#34C759', waiting: false, done: false },
+  { id: 't10', title: 'QA on staging',             color: '#34C759', waiting: false, done: false },
+  { id: 't11', title: 'Launch announcement',       color: '#F2C200', waiting: false, done: false },
+  { id: 't12', title: 'Schedule launch sync',      color: '#E63946', waiting: false, done: false },
 ];
 
 // Snap helpers
@@ -832,8 +813,6 @@ window.GRID = GRID;
 window.snap = snap;
 window.snapMin = snapMin;
 window.snapFloor = snapFloor;
-window.DEFAULT_TAGS = DEFAULT_TAGS;
-window.SIZE_PRESETS = SIZE_PRESETS;
 window.PALETTES = PALETTES;
 window.INITIAL_TASKS = INITIAL_TASKS;
 
@@ -845,7 +824,10 @@ window.INITIAL_TASKS = INITIAL_TASKS;
 // app.jsx — themes, block, context menu, group label, palette/tag manager
 
 const { useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakRadio, TweakToggle, TweakButton, TweakSelect } = window;
-const { PhysicsWorld, PHYS, DEFAULT_TAGS, SIZE_PRESETS, INITIAL_TASKS, PALETTES, GRID } = window;
+const { PhysicsWorld, PHYS, INITIAL_TASKS, PALETTES, GRID } = window;
+
+// Default block dimensions used when spawning new tasks.
+const DEFAULT_W = 250, DEFAULT_H = 100;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "aesthetic": "playful",
@@ -1120,11 +1102,9 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-// ── Resolve a tag's fill color ───────────────────────────────────────────────
-function resolveTagFill(tag, palette, theme) {
-  const idx = (tag && Number.isFinite(tag.colorIndex)) ? tag.colorIndex : 0;
-  const swatches = palette.swatches;
-  const base = swatches[idx % swatches.length];
+// ── Resolve a task color into the theme-adjusted block fill ──────────────────
+function resolveBlockFill(color, theme) {
+  const base = color || '#00B5C9';
   if (theme.fillMode === 'tint') return tint(base, 0.55);
   if (theme.fillMode === 'neon') return darken(base, 0.72);
   if (theme.fillMode === 'terminal') return 'rgba(0,20,8,0.85)';
@@ -1134,7 +1114,7 @@ function resolveTagFill(tag, palette, theme) {
 // ── Block ────────────────────────────────────────────────────────────────────
 
 function Block({
-  task, body, theme, palette, tagsById,
+  task, body, theme,
   selected, completing, deleting, editing, isActionable,
   onPointerDown, onResizeStart, onContextMenu, onDoubleClick,
   onCommitEdit, onCancelEdit, onComplete,
@@ -1148,14 +1128,13 @@ function Block({
     }
   }, [editing]);
 
-  const tag = tagsById[task.tag] || { name: task.tag, colorIndex: 0 };
-  const fill = resolveTagFill(tag, palette, theme);
+  const baseColor = task.color || '#00B5C9';
+  const fill = resolveBlockFill(baseColor, theme);
 
-  // Neon: fg is always the palette color itself (bright), rest is dark bg
+  // Neon: fg is the bright base color, rest of block is dark.
   let fg;
   if (theme.fillMode === 'neon') {
-    const base = palette.swatches[(tag.colorIndex || 0) % palette.swatches.length];
-    fg = base;
+    fg = baseColor;
   } else if (theme.fillMode === 'terminal') {
     fg = '#00ff41';
   } else if (theme.fillMode === 'tint') {
@@ -1184,8 +1163,7 @@ function Block({
   // Neon glow border when not flat
   let neonGlow = 'none';
   if (theme.fillMode === 'neon' && !flatBlocks) {
-    const base = palette.swatches[(tag.colorIndex || 0) % palette.swatches.length];
-    neonGlow = `0 0 0 1px ${base}44, 0 0 16px ${base}55, 0 0 40px ${base}22`;
+    neonGlow = `0 0 0 1px ${baseColor}44, 0 0 16px ${baseColor}55, 0 0 40px ${baseColor}22`;
   }
 
   // Compose block shadow: theme shadow + optional drag lift + optional actionable halo.
@@ -1262,22 +1240,6 @@ function Block({
     baseStyle.outlineOffset = '2px';
   }
 
-  // Derive chip from the block's actual fill (resolveTagFill output) so chips
-  // stay readable on light palettes / light themes. Brutalist/terminal/neon
-  // keep their distinctive looks; everything else uses luminance-based contrast.
-  let tagBg, tagFg;
-  if (theme.aesthetic === 'brutalist') {
-    tagBg = '#000'; tagFg = '#fff';
-  } else if (theme.fillMode === 'terminal') {
-    tagBg = 'rgba(0,255,65,0.12)'; tagFg = '#00ff41';
-  } else if (theme.fillMode === 'neon') {
-    tagBg = 'rgba(255,255,255,0.07)'; tagFg = fg;
-  } else {
-    const lightFill = luminance(fill) > 0.55;
-    tagBg = lightFill ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.18)';
-    tagFg = lightFill ? '#0a0e18' : '#ffffff';
-  }
-
   return (
     <div
       style={baseStyle}
@@ -1287,18 +1249,7 @@ function Block({
       data-block-id={task.id}
       data-block-role="block"
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{
-          fontSize: 9.5,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          fontWeight: 700,
-          padding: '2px 6px',
-          borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : 999,
-          background: tagBg,
-          color: tagFg,
-          opacity: task.waiting ? 0.7 : 1,
-        }}>{tag.name}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {isActionable && !editing && !task.waiting && (
             <button
@@ -1348,13 +1299,6 @@ function Block({
               </svg>
             </button>
           )}
-          <span style={{
-            fontSize: 9.5,
-            letterSpacing: '0.05em',
-            fontWeight: 600,
-            opacity: 0.6,
-            fontVariantNumeric: 'tabular-nums',
-          }}>{task.size}</span>
         </div>
       </div>
 
@@ -1466,41 +1410,65 @@ function ContextMenu({ x, y, items, theme, onClose }) {
         boxShadow: theme.aesthetic === 'brutalist' ? '4px 4px 0 #000' : '0 12px 40px rgba(0,0,0,.18)',
         padding: 4,
         minWidth: 200,
-        zIndex: 1000,
+        zIndex: 99999,
         fontFamily: theme.blockFontFamily,
         fontSize: 12,
         color: theme.panelText,
       }}
     >
-      {items.map((item, i) => item.divider ? (
-        <div key={i} style={{ height: 1, background: theme.panelBorder, margin: '4px 0' }} />
-      ) : (
-        <button
-          key={i}
-          onClick={() => { item.onClick(); onClose(); }}
-          disabled={item.disabled}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: '100%',
-            padding: '7px 10px',
-            border: 0,
-            background: 'transparent',
-            color: 'inherit',
-            font: 'inherit',
-            textAlign: 'left',
-            borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
-            opacity: item.disabled ? 0.4 : 1,
-            cursor: item.disabled ? 'not-allowed' : 'default',
-          }}
-          onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = theme.aesthetic === 'modern' ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.08)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          <span>{item.label}</span>
-          {item.shortcut && <span style={{ opacity: 0.5, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>{item.shortcut}</span>}
-        </button>
-      ))}
+      {items.map((item, i) => {
+        if (item.divider) {
+          return <div key={i} style={{ height: 1, background: theme.panelBorder, margin: '4px 0' }} />;
+        }
+        if (item.type === 'swatches') {
+          return (
+            <div key={i} style={{ display: 'flex', gap: 6, padding: '8px 10px', flexWrap: 'wrap' }}>
+              {item.colors.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => { item.onPick(c); onClose(); }}
+                  title={c}
+                  style={{
+                    width: 22, height: 22, borderRadius: '50%', background: c,
+                    border: '2px solid rgba(0,0,0,0.15)',
+                    cursor: 'pointer', padding: 0,
+                    boxShadow: item.current === c
+                      ? `0 0 0 2px ${theme.panelBg}, 0 0 0 4px ${theme.accentColor || '#fff'}`
+                      : 'none',
+                  }}
+                />
+              ))}
+            </div>
+          );
+        }
+        return (
+          <button
+            key={i}
+            onClick={() => { item.onClick(); onClose(); }}
+            disabled={item.disabled}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '7px 10px',
+              border: 0,
+              background: 'transparent',
+              color: 'inherit',
+              font: 'inherit',
+              textAlign: 'left',
+              borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+              opacity: item.disabled ? 0.4 : 1,
+              cursor: item.disabled ? 'not-allowed' : 'default',
+            }}
+            onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = theme.aesthetic === 'modern' ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span>{item.label}</span>
+            {item.shortcut && <span style={{ opacity: 0.5, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>{item.shortcut}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1601,7 +1569,6 @@ function GroupLabel({ group, theme, onRename, onDelete }) {
 
 function PaletteManager({
   theme, palettes, currentPaletteId, onPickPalette,
-  tags, onUpdateTags,
   customSwatches, onUpdateCustomSwatches,
   onClose,
 }) {
@@ -1643,18 +1610,6 @@ function PaletteManager({
     satBaseRef.current = palette.swatches;
   };
 
-  const updateTag = (id, patch) => {
-    onUpdateTags(tags.map((t) => t.id === id ? { ...t, ...patch } : t));
-  };
-  const deleteTag = (id) => {
-    if (tags.length <= 1) return;
-    onUpdateTags(tags.filter((t) => t.id !== id));
-  };
-  const addTag = () => {
-    const id = 'tag' + Date.now();
-    onUpdateTags([...tags, { id, name: 'new', colorIndex: tags.length % swatches.length }]);
-  };
-
   return (
     <div
       onMouseDown={(e) => e.stopPropagation()}
@@ -1687,7 +1642,7 @@ function PaletteManager({
           borderBottom: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
           flexShrink: 0,
         }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em' }}>Palette & Tags</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em' }}>Palette</div>
           <button onClick={onClose} style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
         </div>
 
@@ -1748,31 +1703,12 @@ function PaletteManager({
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
               {swatches.map((c, i) => (
                 <label key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6, border: theme.aesthetic === 'brutalist' ? '2px solid #000' : '1px solid rgba(0,0,0,.1)', background: c, cursor: 'pointer', overflow: 'hidden', boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : '0 1px 2px rgba(0,0,0,.1)' }}>
                   <input type="color" value={c} onChange={(e) => updateSwatch(i, e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }} />
                   <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 8, fontWeight: 700, color: readableFg(c), opacity: 0.7 }}>{i}</div>
                 </label>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Tags</div>
-              <button onClick={addTag} style={{ border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`, background: 'transparent', color: 'inherit', padding: '3px 8px', fontSize: 10, fontWeight: 600, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 5, cursor: 'pointer', font: 'inherit' }}>+ Add</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {tags.map((tag) => (
-                <div key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 5, border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`, borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6 }}>
-                  <input value={tag.name} onChange={(e) => updateTag(tag.id, { name: e.target.value })} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'inherit', font: 'inherit', fontSize: 11, fontWeight: 500, padding: '2px 4px' }} />
-                  <div style={{ display: 'flex', gap: 2 }}>
-                    {swatches.map((c, i) => (
-                      <button key={i} onClick={() => updateTag(tag.id, { colorIndex: i })} title={`Color ${i}`} style={{ width: 18, height: 18, background: c, border: tag.colorIndex === i ? (theme.aesthetic === 'brutalist' ? '2px solid #000' : `2px solid ${theme.accentColor}`) : (theme.aesthetic === 'brutalist' ? '2px solid transparent' : '1px solid rgba(0,0,0,.15)'), borderRadius: theme.aesthetic === 'brutalist' ? 0 : 3, cursor: 'pointer', padding: 0, outline: 'none' }} />
-                    ))}
-                  </div>
-                  <button onClick={() => deleteTag(tag.id)} disabled={tags.length <= 1} style={{ width: 20, height: 20, border: 0, background: 'transparent', color: 'inherit', opacity: tags.length <= 1 ? 0.25 : 0.55, cursor: tags.length <= 1 ? 'not-allowed' : 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-                </div>
               ))}
             </div>
           </div>
@@ -1786,7 +1722,7 @@ window.ContextMenu = ContextMenu;
 window.GroupLabel = GroupLabel;
 window.PaletteManager = PaletteManager;
 window.AESTHETIC_THEMES = AESTHETIC_THEMES;
-window.resolveTagFill = resolveTagFill;
+window.resolveBlockFill = resolveBlockFill;
 window.readableFg = readableFg;
 window.darken = darken;
 window.tint = tint;
@@ -1804,12 +1740,14 @@ window.TWEAK_DEFAULTS = TWEAK_DEFAULTS;
 // scene.jsx — main scene wiring physics + interactions + grid snapping
 
 const {
-  PhysicsWorld, AESTHETIC_THEMES, INITIAL_TASKS, SIZE_PRESETS, DEFAULT_TAGS, PALETTES,
+  PhysicsWorld, AESTHETIC_THEMES, INITIAL_TASKS, PALETTES,
   GRID, snap, snapMin,
   Block, ContextMenu, GroupLabel, PaletteManager,
   TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakSlider, TweakButton, TweakSelect,
   useTweaks, TWEAK_DEFAULTS, formatShortcut,
 } = window;
+
+const DEFAULT_W = 250, DEFAULT_H = 100;
 
 let __idc = 1000;
 const nextId = () => 't' + (++__idc);
@@ -1848,7 +1786,6 @@ const AESTHETIC_META = [
 function SettingsPage({
   open, reducedMotion,
   t, setTweak, theme,
-  tags, onUpdateTags,
   palettes, customSwatches, onUpdateCustomSwatches,
   addTask, clearBoard, onExport, onImport, importError,
   onOpenPalette,
@@ -2152,7 +2089,7 @@ function SettingsPage({
               </SettingsGroup>
               <SettingsGroup label="Advanced">
                 <SettingsActionButton theme={theme} onClick={onOpenPalette} isDark={isDark}>
-                  Edit swatches & tags…
+                  Edit swatches…
                 </SettingsActionButton>
               </SettingsGroup>
             </div>
@@ -2347,13 +2284,6 @@ function Scene() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const theme = { ...AESTHETIC_THEMES[t.aesthetic], aesthetic: t.aesthetic };
 
-  const [tags, setTags] = React.useState(DEFAULT_TAGS);
-  const tagsById = React.useMemo(() => {
-    const m = {};
-    for (const tg of tags) m[tg.id] = tg;
-    return m;
-  }, [tags]);
-
   const [customSwatches, setCustomSwatches] = React.useState({});
   const [importError, setImportError] = React.useState('');
   const palette = React.useMemo(() => {
@@ -2392,15 +2322,23 @@ function Scene() {
   }, [settingsOpen]);
   const [draggingAny, setDraggingAny] = React.useState(false);
 
+  // Infinite canvas: world is taller than the viewport; camera translates the block layer.
+  const WORLD_H = 8000;
+  const cameraRef = React.useRef({ x: 0, y: 0 });
+  const [cameraPos, setCameraPos] = React.useState({ x: 0, y: 0 });
+
   React.useEffect(() => {
     const el = sceneRef.current;
     const r = el.getBoundingClientRect();
     const W = r.width, H = r.height;
     setBounds({ w: W, h: H });
-    const world = new PhysicsWorld(W, H);
+    const world = new PhysicsWorld(W, WORLD_H);
     worldRef.current = world;
+    const initCamY = Math.max(0, WORLD_H - H);
+    cameraRef.current = { x: 0, y: initCamY };
+    setCameraPos({ x: 0, y: initCamY });
 
-    // Board starts empty; user adds tasks via + Task, Cmd+N, or right-click.
+    // Board starts empty; user adds tasks via + Task, Alt+N, right-click, or double-click.
   }, []);
 
   React.useEffect(() => {
@@ -2410,14 +2348,20 @@ function Scene() {
       setBounds({ w: r.width, h: r.height });
       const world = worldRef.current;
       if (!world) return;
-      world.setBounds(r.width, r.height);
-      // Reclaim any block that's now outside the new bounds. Wake it so the
-      // physics step settles it correctly into the smaller area.
+      world.setBounds(r.width, WORLD_H);
+      // Reclaim any block that's now outside the horizontal bounds. Vertical
+      // world is fixed at WORLD_H so no y-reclamation is needed.
       for (const b of world.bodies.values()) {
         const maxX = Math.max(0, r.width - b.w);
-        const maxY = Math.max(0, r.height - b.h);
         if (b.x > maxX) { b.x = maxX; b.vx = 0; b._snapped = false; b.restFrames = 0; }
-        if (b.y > maxY) { b.y = maxY; b.vy = 0; b._snapped = false; b.restFrames = 0; }
+      }
+      // Re-clamp camera if the viewport got taller and the camera is now
+      // sitting below the new max-y.
+      const cam = cameraRef.current;
+      const maxCamY = Math.max(0, WORLD_H - r.height);
+      if (cam.y > maxCamY) {
+        cameraRef.current = { x: cam.x, y: maxCamY };
+        setCameraPos({ x: cam.x, y: maxCamY });
       }
     });
     ro.observe(sceneRef.current);
@@ -2477,8 +2421,9 @@ function Scene() {
     setSelectedIds(nextSel);
 
     const sceneRect = sceneRef.current.getBoundingClientRect();
-    const startMx = e.clientX - sceneRect.left;
-    const startMy = e.clientY - sceneRect.top;
+    const cam0 = cameraRef.current;
+    const startMx = e.clientX - sceneRect.left + cam0.x;
+    const startMy = e.clientY - sceneRect.top  + cam0.y;
     const dragging = [...nextSel].map((id) => {
       const b = world.get(id);
       return b ? { id, ox: b.x - startMx, oy: b.y - startMy, body: b } : null;
@@ -2492,8 +2437,9 @@ function Scene() {
     let lastT = performance.now();
 
     const move = (ev) => {
-      const mx = ev.clientX - sceneRect.left;
-      const my = ev.clientY - sceneRect.top;
+      const cam = cameraRef.current;
+      const mx = ev.clientX - sceneRect.left + cam.x;
+      const my = ev.clientY - sceneRect.top  + cam.y;
       if (Math.abs(mx - startMx) + Math.abs(my - startMy) > 3) moved = true;
       dragging.forEach((d) => {
         let nx = mx + d.ox;
@@ -2539,7 +2485,7 @@ function Scene() {
     body.dragging = true; body.vx = 0; body.vy = 0; body.snapAnim = false;
     setDraggingAny(true);
 
-    const minW = t.gridSize * 2, minH = t.gridSize, maxW = 600, maxH = 400;
+    const minW = 20, minH = 20;
     const hasN = dir.includes('n'), hasS = dir.includes('s');
     const hasW = dir.includes('w'), hasE = dir.includes('e');
 
@@ -2550,8 +2496,8 @@ function Scene() {
       if (hasW) { nw = sw - dx; nx = startX + dx; }
       if (hasS) nh = sh + dy;
       if (hasN) { nh = sh - dy; ny = startY + dy; }
-      const clampedW = Math.max(minW, Math.min(maxW, nw));
-      const clampedH = Math.max(minH, Math.min(maxH, nh));
+      const clampedW = Math.max(minW, nw);
+      const clampedH = Math.max(minH, nh);
       if (hasW) nx = startX + (sw - clampedW);
       if (hasN) ny = startY + (sh - clampedH);
       nw = clampedW; nh = clampedH;
@@ -2584,31 +2530,66 @@ function Scene() {
   const onScenePointerDown = (e) => {
     if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
     if (e.button !== 0) return;
-    setSelectedIds(new Set()); setEditingId(null);
+    setEditingId(null);
     const sceneRect = sceneRef.current.getBoundingClientRect();
-    const sx = e.clientX - sceneRect.left, sy = e.clientY - sceneRect.top;
-    setLasso({ x1: sx, y1: sy, x2: sx, y2: sy });
+
+    if (e.shiftKey) {
+      // Shift+drag: lasso select in world coords.
+      setSelectedIds(new Set());
+      const cam0 = cameraRef.current;
+      const wx = e.clientX - sceneRect.left + cam0.x;
+      const wy = e.clientY - sceneRect.top  + cam0.y;
+      setLasso({ x1: wx, y1: wy, x2: wx, y2: wy });
+      const move = (ev) => {
+        const cam = cameraRef.current;
+        const mx = ev.clientX - sceneRect.left + cam.x;
+        const my = ev.clientY - sceneRect.top  + cam.y;
+        setLasso({ x1: wx, y1: wy, x2: mx, y2: my });
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        setLasso((curr) => {
+          if (!curr) return null;
+          const x1 = Math.min(curr.x1, curr.x2), y1 = Math.min(curr.y1, curr.y2);
+          const x2 = Math.max(curr.x1, curr.x2), y2 = Math.max(curr.y1, curr.y2);
+          const w = worldRef.current;
+          if (w) {
+            const inLasso = new Set();
+            for (const b of w.bodies.values()) {
+              if (b.x + b.w > x1 && b.x < x2 && b.y + b.h > y1 && b.y < y2) inLasso.add(b.id);
+            }
+            if (inLasso.size > 0) setSelectedIds(inLasso);
+          }
+          return null;
+        });
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      return;
+    }
+
+    // Plain drag: pan the camera. Only deselect if this turns out to be a pure click.
+    const startX = e.clientX, startY = e.clientY;
+    const startCam = { ...cameraRef.current };
+    let moved = false;
     const move = (ev) => {
-      const mx = ev.clientX - sceneRect.left, my = ev.clientY - sceneRect.top;
-      setLasso({ x1: sx, y1: sy, x2: mx, y2: my });
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && Math.hypot(dx, dy) > 3) moved = true;
+      if (!moved) return;
+      const maxCamY = Math.max(0, WORLD_H - bounds.h);
+      const nx = Math.max(0, startCam.x - dx);
+      const ny = Math.max(0, Math.min(maxCamY, startCam.y - dy));
+      cameraRef.current = { x: nx, y: ny };
+      setCameraPos({ x: nx, y: ny });
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      setLasso((curr) => {
-        if (!curr) return null;
-        const x1 = Math.min(curr.x1, curr.x2), y1 = Math.min(curr.y1, curr.y2);
-        const x2 = Math.max(curr.x1, curr.x2), y2 = Math.max(curr.y1, curr.y2);
-        const w = worldRef.current;
-        if (w) {
-          const inLasso = new Set();
-          for (const b of w.bodies.values()) {
-            if (b.x + b.w > x1 && b.x < x2 && b.y + b.h > y1 && b.y < y2) inLasso.add(b.id);
-          }
-          if (inLasso.size > 0) setSelectedIds(inLasso);
-        }
-        return null;
-      });
+      if (!moved) {
+        setSelectedIds(new Set());
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -2656,18 +2637,27 @@ function Scene() {
 
   const addTask = (overrides = {}) => {
     const id = nextId();
-    const tag0 = tags[0]?.id || 'eng';
-    const task = { id, title: overrides.title || 'New task', tag: overrides.tag || tag0, size: overrides.size || 'M', waiting: false, done: false, ...overrides };
+    const defaultColor = palette.swatches[0];
+    const task = {
+      id,
+      title: overrides.title || 'New task',
+      color: overrides.color || defaultColor,
+      waiting: false,
+      done: false,
+      ...overrides,
+    };
     tasksRef.current.set(id, task);
-    const sz = SIZE_PRESETS[task.size];
     const w = worldRef.current;
     if (!w) return;
     const g = t.gridSize;
-    const cols = Math.max(1, Math.floor((bounds.w - sz.w - g * 2) / g));
-    const col = Math.floor(Math.random() * cols);
-    const x = g + col * g;
-    const y = -sz.h - g;
-    w.add({ id, x, y, w: sz.w, h: sz.h, vx: 0, vy: 0 });
+    const cam = cameraRef.current;
+    const x = overrides.x !== undefined
+      ? overrides.x
+      : Math.round((cam.x + bounds.w / 2 - DEFAULT_W / 2) / g) * g;
+    const y = overrides.y !== undefined
+      ? overrides.y
+      : Math.round((cam.y + bounds.h / 2 - DEFAULT_H / 2) / g) * g;
+    w.add({ id, x, y, w: DEFAULT_W, h: DEFAULT_H, vx: 0, vy: 0 });
     setEditingId(id);
     setSelectedIds(new Set([id]));
   };
@@ -2676,16 +2666,6 @@ function Scene() {
     const ids = [...selectedIds];
     if (ids.length < 2) return;
     setGroups((gs) => [...gs, { id: 'g' + Date.now(), label: label || 'group', taskIds: ids, justCreated: !label }]);
-  };
-
-  const handleUpdateTags = (newTags) => {
-    if (newTags.length === 0) return;
-    const validIds = new Set(newTags.map((tg) => tg.id));
-    const fallback = newTags[0].id;
-    for (const [id, tk] of tasksRef.current.entries()) {
-      if (!validIds.has(tk.tag)) tasksRef.current.set(id, { ...tk, tag: fallback });
-    }
-    setTags(newTags);
   };
 
   const clearBoard = () => {
@@ -2713,7 +2693,6 @@ function Scene() {
       version: 1,
       exportedAt: new Date().toISOString(),
       tasks,
-      tags,
       groups,
       customSwatches,
       tweaks: { ...t },
@@ -2737,7 +2716,6 @@ function Scene() {
       const data = JSON.parse(text);
       if (data.version !== 1) throw new Error(`Unsupported version: ${data.version}`);
       if (!Array.isArray(data.tasks)) throw new Error('Missing tasks array');
-      if (!Array.isArray(data.tags)) throw new Error('Missing tags array');
 
       const w = worldRef.current;
       if (w) for (const id of [...w.bodies.keys()]) w.remove(id);
@@ -2748,7 +2726,6 @@ function Scene() {
         tasksRef.current.set(task.id, rest);
         if (w) w.add({ id: task.id, x, y, w: bw, h: bh });
       }
-      setTags(data.tags);
       setGroups(Array.isArray(data.groups) ? data.groups : []);
       setCustomSwatches(data.customSwatches && typeof data.customSwatches === 'object' ? data.customSwatches : {});
       if (data.tweaks && typeof data.tweaks === 'object') setTweak(data.tweaks);
@@ -2772,27 +2749,8 @@ function Scene() {
         { label: 'Edit title', onClick: () => setEditingId(taskId), disabled: ids.length > 1 },
         { label: task.waiting ? 'Unmark as waiting' : 'Mark as waiting', onClick: () => ids.forEach(toggleWaiting) },
         { divider: true },
-        { label: 'Cycle tag', onClick: () => {
-          const keys = tags.map((tg) => tg.id);
-          ids.forEach((id) => {
-            const tk = getTask(id);
-            if (tk) { const i = keys.indexOf(tk.tag); updateTask(id, { tag: keys[(i + 1) % keys.length] }); }
-          });
-          forceRender();
-        }},
-        { label: 'Cycle size', onClick: () => {
-          const keys = Object.keys(SIZE_PRESETS);
-          ids.forEach((id) => {
-            const tk = getTask(id);
-            const body = worldRef.current.get(id);
-            if (tk && body) {
-              const i = keys.indexOf(tk.size);
-              const next = keys[(i + 1) % keys.length];
-              const sz = SIZE_PRESETS[next];
-              updateTask(id, { size: next });
-              body.w = sz.w; body.h = sz.h;
-            }
-          });
+        { type: 'swatches', colors: palette.swatches, current: task.color, onPick: (c) => {
+          ids.forEach((id) => updateTask(id, { color: c }));
           forceRender();
         }},
         { divider: true },
@@ -2805,23 +2763,32 @@ function Scene() {
   const openSceneContext = (e) => {
     if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
     e.preventDefault();
+    const rect = sceneRef.current.getBoundingClientRect();
+    const clickClientX = e.clientX;
+    const clickClientY = e.clientY;
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Add task here', onClick: () => addTask() },
+        { label: 'Add task here', onClick: () => {
+          const cam = cameraRef.current;
+          const wx = clickClientX - rect.left + cam.x;
+          const wy = clickClientY - rect.top  + cam.y;
+          addTask({
+            x: Math.round((wx - DEFAULT_W / 2) / t.gridSize) * t.gridSize,
+            y: Math.round((wy - DEFAULT_H / 2) / t.gridSize) * t.gridSize,
+          });
+        }},
         { label: t.gravityOn ? 'Pause gravity' : 'Resume gravity', shortcut: 'space', onClick: () => setTweak('gravityOn', !t.gravityOn) },
         { divider: true },
         { label: 'Settings…', onClick: () => setSettingsOpen(true) },
-        { label: 'Manage palettes & tags…', onClick: () => setPaletteOpen(true) },
+        { label: 'Manage palette…', onClick: () => setPaletteOpen(true) },
         { divider: true },
         { label: 'Drop a wave (+5 random)', onClick: () => {
-          const tagIds = tags.map((tg) => tg.id);
-          const sizes = ['XS','S','M','L'];
+          const swatches = palette.swatches;
           for (let i = 0; i < 5; i++) {
             setTimeout(() => addTask({
               title: ['Triage bug', 'Quick review', 'Sync notes', 'Doc update', 'Spike'][i],
-              tag: tagIds[Math.floor(Math.random() * tagIds.length)],
-              size: sizes[Math.floor(Math.random() * sizes.length)],
+              color: swatches[Math.floor(Math.random() * swatches.length)],
             }), i * 80);
           }
         }},
@@ -2838,13 +2805,13 @@ function Scene() {
       if (e.key === 'Enter' && selectedIds.size > 0) { e.preventDefault(); [...selectedIds].forEach(completeTask); }
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectedIds.size > 0) { e.preventDefault(); [...selectedIds].forEach(deleteTask); }
       if (e.key === 'g' && selectedIds.size >= 2) { e.preventDefault(); groupSelected(); }
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addTask(); }
+      if ((e.key === 'n' || e.key === 'N') && e.altKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); addTask(); }
       if (e.key === 'Escape') { setSelectedIds(new Set()); setContextMenu(null); setSettingsOpen(false); }
       if (e.key === '?') setHelpOpen((v) => !v);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [t.gravityOn, selectedIds, editingId, paletteOpen, settingsOpen, tags]);
+  }, [t.gravityOn, selectedIds, editingId, paletteOpen, settingsOpen]);
 
   const groupsWithBbox = React.useMemo(() => {
     const w = worldRef.current;
@@ -2868,17 +2835,28 @@ function Scene() {
   const compact = bounds.w < 900;
   const tight = bounds.w < 600;
   const actionableCount = bodies.filter((b) => world && world.isActionable(b.id)).length;
-  const newTaskShortcut = formatShortcut('mod+n');
+  const newTaskShortcut = 'Alt+N';
 
   return (
     <div
       ref={sceneRef}
       onPointerDown={onScenePointerDown}
       onContextMenu={openSceneContext}
+      onDoubleClick={(e) => {
+        if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
+        const rect = sceneRef.current.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const wx = e.clientX - rect.left + cam.x;
+        const wy = e.clientY - rect.top  + cam.y;
+        addTask({
+          x: Math.round((wx - DEFAULT_W / 2) / t.gridSize) * t.gridSize,
+          y: Math.round((wy - DEFAULT_H / 2) / t.gridSize) * t.gridSize,
+        });
+      }}
       style={{
         position: 'fixed', inset: 0, overflow: 'hidden',
         background: theme.bg,
-        cursor: lasso ? 'crosshair' : 'default',
+        cursor: lasso ? 'crosshair' : 'grab',
         filter: t.gravityOn ? 'none' : 'saturate(0.85)',
         transition: reducedMotion ? 'none' : 'filter .25s ease',
       }}
@@ -2889,6 +2867,7 @@ function Scene() {
           position: 'absolute', inset: 0,
           backgroundImage: `linear-gradient(${theme.bgGrid} 1px, transparent 1px), linear-gradient(90deg, ${theme.bgGrid} 1px, transparent 1px)`,
           backgroundSize: `${t.gridSize}px ${t.gridSize}px`,
+          backgroundPosition: `${(-cameraPos.x % t.gridSize)}px ${(-cameraPos.y % t.gridSize)}px`,
           pointerEvents: 'none',
           maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
           WebkitMaskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
@@ -2900,49 +2879,13 @@ function Scene() {
           position: 'absolute', inset: 0,
           backgroundImage: `linear-gradient(${theme.bgGridStrong} 1px, transparent 1px), linear-gradient(90deg, ${theme.bgGridStrong} 1px, transparent 1px)`,
           backgroundSize: `${t.gridSize}px ${t.gridSize}px`,
+          backgroundPosition: `${(-cameraPos.x % t.gridSize)}px ${(-cameraPos.y % t.gridSize)}px`,
           pointerEvents: 'none',
           transition: 'opacity .15s',
         }} />
       )}
 
-      {/* Floor */}
-      <div data-scene-layer="1" style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: 4,
-        background: theme.floor,
-        borderTop: theme.aesthetic === 'brutalist' ? '4px solid #000' : 'none',
-        pointerEvents: 'none',
-      }} />
-      {t.showActionableGlow && (
-        <div data-scene-layer="1" style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, height: 80,
-          background: `linear-gradient(to top, ${theme.floorGlow} 0%, transparent 100%)`,
-          opacity: (0.18 + 0.07 * pulse) * (t.gravityOn ? 1 : 0.35),
-          pointerEvents: 'none',
-          mixBlendMode: theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'multiply' : 'screen',
-          transition: reducedMotion ? 'none' : 'opacity .25s ease',
-        }} />
-      )}
-      {t.showActionableGlow && (
-        <div data-scene-layer="1" style={{
-          position: 'absolute', left: 0, right: 0, bottom: 4, height: 1,
-          background: theme.floorGlow,
-          boxShadow: `0 0 ${12 + 8 * pulse}px ${theme.floorGlow}, 0 0 ${4 + 2 * pulse}px ${theme.floorGlow}`,
-          opacity: (0.6 + 0.3 * pulse) * (t.gravityOn ? 1 : 0.35),
-          pointerEvents: 'none',
-          transition: reducedMotion ? 'none' : 'opacity .25s ease',
-        }} />
-      )}
-
-      {/* Empty-board floor rule — strengthens the "do-now zone" metaphor before any block has landed */}
-      {bodies.length === 0 && (
-        <div data-scene-layer="1" style={{
-          position: 'absolute', left: 0, right: 0, bottom: 24, height: 1,
-          borderTop: `1px dashed ${theme.floorGlow}`,
-          opacity: 0.4,
-          pointerEvents: 'none',
-          transition: reducedMotion ? 'none' : 'opacity .25s ease',
-        }} />
-      )}
+      {/* "Actionable now" label — screen-anchored UI, stays outside camera wrapper */}
       <div data-scene-layer="1" style={{
         position: 'absolute', left: 16, bottom: 12,
         fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase',
@@ -2952,17 +2895,65 @@ function Scene() {
         fontFamily: theme.blockFontFamily,
         pointerEvents: 'none',
         transition: reducedMotion ? 'none' : 'color .25s ease',
+        zIndex: 2,
       }}>
         ↓ Actionable now
       </div>
 
-      {/* Group labels */}
-      {t.labelGroups && groupsWithBbox.map((g) => (
-        <GroupLabel key={g.id} group={g} theme={theme}
-          onRename={(label) => setGroups((gs) => gs.map((x) => x.id === g.id ? { ...x, label, justCreated: false } : x))}
-          onDelete={() => setGroups((gs) => gs.filter((x) => x.id !== g.id))}
-        />
-      ))}
+      {/* Camera wrapper — translates the world layer so blocks, floor visuals,
+          and lasso scroll together when the user pans. */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          transform: `translate(${-cameraPos.x}px, ${-cameraPos.y}px)`,
+          willChange: 'transform',
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Floor at WORLD_H */}
+        <div data-scene-layer="1" style={{
+          position: 'absolute', left: 0, right: 0, top: WORLD_H - 4, height: 4,
+          background: theme.floor,
+          borderTop: theme.aesthetic === 'brutalist' ? '4px solid #000' : 'none',
+        }} />
+        {t.showActionableGlow && (
+          <div data-scene-layer="1" style={{
+            position: 'absolute', left: 0, right: 0, top: WORLD_H - 80, height: 80,
+            background: `linear-gradient(to top, ${theme.floorGlow} 0%, transparent 100%)`,
+            opacity: (0.18 + 0.07 * pulse) * (t.gravityOn ? 1 : 0.35),
+            mixBlendMode: theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'multiply' : 'screen',
+            transition: reducedMotion ? 'none' : 'opacity .25s ease',
+          }} />
+        )}
+        {t.showActionableGlow && (
+          <div data-scene-layer="1" style={{
+            position: 'absolute', left: 0, right: 0, top: WORLD_H - 5, height: 1,
+            background: theme.floorGlow,
+            boxShadow: `0 0 ${12 + 8 * pulse}px ${theme.floorGlow}, 0 0 ${4 + 2 * pulse}px ${theme.floorGlow}`,
+            opacity: (0.6 + 0.3 * pulse) * (t.gravityOn ? 1 : 0.35),
+            transition: reducedMotion ? 'none' : 'opacity .25s ease',
+          }} />
+        )}
+
+        {/* Empty-board floor rule — sits just above the floor */}
+        {bodies.length === 0 && (
+          <div data-scene-layer="1" style={{
+            position: 'absolute', left: 0, right: 0, top: WORLD_H - 24, height: 1,
+            borderTop: `1px dashed ${theme.floorGlow}`,
+            opacity: 0.4,
+            transition: reducedMotion ? 'none' : 'opacity .25s ease',
+          }} />
+        )}
+
+        {/* Group labels (world coords) */}
+        <div style={{ pointerEvents: 'auto' }}>
+          {t.labelGroups && groupsWithBbox.map((g) => (
+            <GroupLabel key={g.id} group={g} theme={theme}
+              onRename={(label) => setGroups((gs) => gs.map((x) => x.id === g.id ? { ...x, label, justCreated: false } : x))}
+              onDelete={() => setGroups((gs) => gs.filter((x) => x.id !== g.id))}
+            />
+          ))}
+        </div>
 
       {/* Empty state card */}
       {bodies.length === 0 && (
@@ -3008,47 +2999,48 @@ function Scene() {
         </div>
       )}
 
-      {/* Blocks */}
-      {bodies.map((body) => {
-        const task = tasksRef.current.get(body.id);
-        if (!task) return null;
-        const isActionable = world ? world.isActionable(body.id) : false;
-        return (
-          <Block
-            key={body.id}
-            task={task} body={body} theme={theme}
-            palette={palette} tagsById={tagsById}
-            selected={selectedIds.has(body.id)}
-            completing={completing.has(body.id)}
-            deleting={deleting.has(body.id)}
-            editing={editingId === body.id}
-            isActionable={isActionable}
-            flatBlocks={t.flatBlocks}
-            glowPulse={glowPulse}
-            showActionableGlow={t.showActionableGlow}
-            reducedMotion={reducedMotion}
-            onPointerDown={(e) => onBlockPointerDown(e, body.id)}
-            onResizeStart={(e, dir) => onBlockResizeStart(e, body.id, dir)}
-            onContextMenu={(e) => openBlockContext(e, body.id)}
-            onDoubleClick={() => setEditingId(body.id)}
-            onComplete={() => completeTask(body.id)}
-            onCommitEdit={(v) => { updateTask(body.id, { title: v || 'Untitled' }); setEditingId(null); forceRender(); }}
-            onCancelEdit={() => setEditingId(null)}
-          />
-        );
-      })}
+        {/* Blocks (world coords) */}
+        <div style={{ pointerEvents: 'auto' }}>
+          {bodies.map((body) => {
+            const task = tasksRef.current.get(body.id);
+            if (!task) return null;
+            const isActionable = world ? world.isActionable(body.id) : false;
+            return (
+              <Block
+                key={body.id}
+                task={task} body={body} theme={theme}
+                selected={selectedIds.has(body.id)}
+                completing={completing.has(body.id)}
+                deleting={deleting.has(body.id)}
+                editing={editingId === body.id}
+                isActionable={isActionable}
+                flatBlocks={t.flatBlocks}
+                glowPulse={glowPulse}
+                showActionableGlow={t.showActionableGlow}
+                reducedMotion={reducedMotion}
+                onPointerDown={(e) => onBlockPointerDown(e, body.id)}
+                onResizeStart={(e, dir) => onBlockResizeStart(e, body.id, dir)}
+                onContextMenu={(e) => openBlockContext(e, body.id)}
+                onDoubleClick={() => setEditingId(body.id)}
+                onComplete={() => completeTask(body.id)}
+                onCommitEdit={(v) => { updateTask(body.id, { title: v || 'Untitled' }); setEditingId(null); forceRender(); }}
+                onCancelEdit={() => setEditingId(null)}
+              />
+            );
+          })}
+        </div>
 
-      {/* Lasso */}
-      {lasso && (
-        <div style={{
-          position: 'absolute',
-          left: Math.min(lasso.x1, lasso.x2), top: Math.min(lasso.y1, lasso.y2),
-          width: Math.abs(lasso.x2 - lasso.x1), height: Math.abs(lasso.y2 - lasso.y1),
-          background: `${theme.accentColor}15`,
-          border: `1px dashed ${theme.accentColor}`,
-          pointerEvents: 'none',
-        }} />
-      )}
+        {/* Lasso (world coords) */}
+        {lasso && (
+          <div style={{
+            position: 'absolute',
+            left: Math.min(lasso.x1, lasso.x2), top: Math.min(lasso.y1, lasso.y2),
+            width: Math.abs(lasso.x2 - lasso.x1), height: Math.abs(lasso.y2 - lasso.y1),
+            background: `${theme.accentColor}15`,
+            border: `1px dashed ${theme.accentColor}`,
+          }} />
+        )}
+      </div>{/* /camera wrapper */}
 
       {/* Header bar */}
       <div data-scene-layer="1" style={{
@@ -3136,7 +3128,6 @@ function Scene() {
         <PaletteManager
           theme={theme} palettes={PALETTES}
           currentPaletteId={t.paletteId} onPickPalette={(id) => setTweak('paletteId', id)}
-          tags={tags} onUpdateTags={handleUpdateTags}
           customSwatches={customSwatches} onUpdateCustomSwatches={setCustomSwatches}
           onClose={() => setPaletteOpen(false)}
         />
@@ -3147,12 +3138,10 @@ function Scene() {
           open={settingsOpen}
           reducedMotion={reducedMotion}
           t={t} setTweak={setTweak} theme={theme}
-          tags={tags} onUpdateTags={handleUpdateTags}
           palettes={PALETTES} customSwatches={customSwatches} onUpdateCustomSwatches={setCustomSwatches}
           addTask={() => addTask({
             title: ['Reply to Slack', 'Doc cleanup', 'Weekly review', 'Hotfix'][Math.floor(Math.random() * 4)],
-            tag: tags[Math.floor(Math.random() * tags.length)].id,
-            size: ['XS','S','M','L'][Math.floor(Math.random() * 4)],
+            color: palette.swatches[Math.floor(Math.random() * palette.swatches.length)],
           })}
           clearBoard={clearBoard}
           onExport={handleExport}
@@ -3258,8 +3247,9 @@ function HelpOverlay({ theme, isDark, onClose, gridSize }) {
             ['tick (✓)', 'complete (bottom-row only)'],
             ['double-click', 'edit title'],
             ['right-click', 'menu'],
-            ['drag empty area', 'lasso select'],
-            [formatShortcut('mod+n'), 'new task'],
+            ['drag empty area', 'pan canvas'],
+            ['shift+drag empty area', 'lasso select'],
+            ['Alt+N', 'new task'],
             ['enter', 'complete selected'],
             ['delete / ⌫', 'delete selected'],
             ['g', 'group selected (2+)'],
