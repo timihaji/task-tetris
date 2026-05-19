@@ -1173,7 +1173,10 @@ function Block({
     : null;
   const haloOn = !!(showActionableGlow && isActionable && !completing && !deleting && !body.dragging);
   const haloPulse = haloOn ? (0.45 + 0.25 * Math.sin((glowPulse || 0) * 1.6)) : 0;
-  const haloShadow = haloOn ? `0 0 0 1px ${theme.floorGlow}, 0 0 24px ${theme.floorGlow.replace(/[\d.]+\)$/, haloPulse.toFixed(2) + ')')}` : null;
+  // Inset glow so the actionable cue stays inside the block and never bleeds onto neighbours.
+  const haloShadow = haloOn
+    ? `inset 0 0 0 1px ${theme.floorGlow}, inset 0 0 16px ${theme.floorGlow.replace(/[\d.]+\)$/, haloPulse.toFixed(2) + ')')}`
+    : null;
   const composedShadow = [haloShadow, dragShadow || baseShadow].filter(Boolean).join(', ');
 
   // Build transition string. Animations are suppressed during drag/completing/
@@ -1386,6 +1389,20 @@ function Block({
 // ── Context Menu ─────────────────────────────────────────────────────────────
 
 function ContextMenu({ x, y, items, theme, onClose }) {
+  const menuRef = React.useRef(null);
+  const [pos, setPos] = React.useState({ x, y });
+
+  React.useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const pad = 8;
+    let nx = x;
+    let ny = y;
+    if (ny + rect.height > window.innerHeight - pad) ny = Math.max(pad, y - rect.height);
+    if (nx + rect.width > window.innerWidth - pad) nx = Math.max(pad, x - rect.width);
+    setPos({ x: nx, y: ny });
+  }, [x, y]);
+
   React.useEffect(() => {
     const close = () => onClose();
     window.addEventListener('mousedown', close);
@@ -1398,10 +1415,11 @@ function ContextMenu({ x, y, items, theme, onClose }) {
 
   return (
     <div
+      ref={menuRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
-        left: x, top: y,
+        left: pos.x, top: pos.y,
         background: theme.panelBg,
         backdropFilter: 'blur(20px) saturate(160%)',
         WebkitBackdropFilter: 'blur(20px) saturate(160%)',
@@ -2530,7 +2548,9 @@ function Scene() {
   const onScenePointerDown = (e) => {
     if (e.target !== sceneRef.current && !e.target.dataset.sceneLayer) return;
     if (e.button !== 0) return;
-    setEditingId(null);
+    // Don't call setEditingId(null) here — doing so flushes React state and
+    // unmounts the editing input before the blur event fires, which drops the
+    // in-progress edit. The input's onBlur handler commits and clears editingId.
     const sceneRect = sceneRef.current.getBoundingClientRect();
 
     if (e.shiftKey) {
@@ -2900,8 +2920,55 @@ function Scene() {
         ↓ Actionable now
       </div>
 
-      {/* Camera wrapper — translates the world layer so blocks, floor visuals,
-          and lasso scroll together when the user pans. */}
+      {/* Floor strip and glow — screen-anchored so they span the full viewport
+          width even when the canvas is panned horizontally. Y is converted from
+          world space to screen space by subtracting the camera offset. */}
+      {(() => {
+        const floorScreenY = WORLD_H - cameraPos.y;
+        return (
+          <React.Fragment>
+            <div data-scene-layer="1" style={{
+              position: 'absolute', left: 0, right: 0, top: floorScreenY - 4, height: 4,
+              background: theme.floor,
+              borderTop: theme.aesthetic === 'brutalist' ? '4px solid #000' : 'none',
+              pointerEvents: 'none',
+            }} />
+            {t.showActionableGlow && (
+              <div data-scene-layer="1" style={{
+                position: 'absolute', left: 0, right: 0, top: floorScreenY - 80, height: 80,
+                background: `linear-gradient(to top, ${theme.floorGlow} 0%, transparent 100%)`,
+                opacity: (0.18 + 0.07 * pulse) * (t.gravityOn ? 1 : 0.35),
+                mixBlendMode: theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'multiply' : 'screen',
+                transition: reducedMotion ? 'none' : 'opacity .25s ease',
+                pointerEvents: 'none',
+              }} />
+            )}
+            {t.showActionableGlow && (
+              <div data-scene-layer="1" style={{
+                position: 'absolute', left: 0, right: 0, top: floorScreenY - 5, height: 1,
+                background: theme.floorGlow,
+                boxShadow: `0 0 ${12 + 8 * pulse}px ${theme.floorGlow}, 0 0 ${4 + 2 * pulse}px ${theme.floorGlow}`,
+                opacity: (0.6 + 0.3 * pulse) * (t.gravityOn ? 1 : 0.35),
+                transition: reducedMotion ? 'none' : 'opacity .25s ease',
+                pointerEvents: 'none',
+              }} />
+            )}
+            {bodies.length === 0 && (
+              <div data-scene-layer="1" style={{
+                position: 'absolute', left: 0, right: 0, top: floorScreenY - 24, height: 1,
+                borderTop: `1px dashed ${theme.floorGlow}`,
+                opacity: 0.4,
+                transition: reducedMotion ? 'none' : 'opacity .25s ease',
+                pointerEvents: 'none',
+              }} />
+            )}
+          </React.Fragment>
+        );
+      })()}
+
+      {/* Camera wrapper — translates the world layer so blocks and lasso
+          scroll together when the user pans. Floor/glow live outside so they
+          always span the full viewport width. */}
       <div
         style={{
           position: 'absolute', inset: 0,
@@ -2910,40 +2977,6 @@ function Scene() {
           pointerEvents: 'none',
         }}
       >
-        {/* Floor at WORLD_H */}
-        <div data-scene-layer="1" style={{
-          position: 'absolute', left: 0, right: 0, top: WORLD_H - 4, height: 4,
-          background: theme.floor,
-          borderTop: theme.aesthetic === 'brutalist' ? '4px solid #000' : 'none',
-        }} />
-        {t.showActionableGlow && (
-          <div data-scene-layer="1" style={{
-            position: 'absolute', left: 0, right: 0, top: WORLD_H - 80, height: 80,
-            background: `linear-gradient(to top, ${theme.floorGlow} 0%, transparent 100%)`,
-            opacity: (0.18 + 0.07 * pulse) * (t.gravityOn ? 1 : 0.35),
-            mixBlendMode: theme.aesthetic === 'modern' || theme.aesthetic === 'soft' ? 'multiply' : 'screen',
-            transition: reducedMotion ? 'none' : 'opacity .25s ease',
-          }} />
-        )}
-        {t.showActionableGlow && (
-          <div data-scene-layer="1" style={{
-            position: 'absolute', left: 0, right: 0, top: WORLD_H - 5, height: 1,
-            background: theme.floorGlow,
-            boxShadow: `0 0 ${12 + 8 * pulse}px ${theme.floorGlow}, 0 0 ${4 + 2 * pulse}px ${theme.floorGlow}`,
-            opacity: (0.6 + 0.3 * pulse) * (t.gravityOn ? 1 : 0.35),
-            transition: reducedMotion ? 'none' : 'opacity .25s ease',
-          }} />
-        )}
-
-        {/* Empty-board floor rule — sits just above the floor */}
-        {bodies.length === 0 && (
-          <div data-scene-layer="1" style={{
-            position: 'absolute', left: 0, right: 0, top: WORLD_H - 24, height: 1,
-            borderTop: `1px dashed ${theme.floorGlow}`,
-            opacity: 0.4,
-            transition: reducedMotion ? 'none' : 'opacity .25s ease',
-          }} />
-        )}
 
         {/* Group labels (world coords) */}
         <div style={{ pointerEvents: 'auto' }}>
