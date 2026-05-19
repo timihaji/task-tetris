@@ -1252,58 +1252,59 @@ function Block({
       data-block-id={task.id}
       data-block-role="block"
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {isActionable && !editing && !task.waiting && (
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); }}
-              onClick={(e) => { e.stopPropagation(); onComplete(); }}
-              title="Mark complete"
-              aria-label="Mark complete"
-              style={{
-                width: 24, height: 24,
-                borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : '50%',
-                border: theme.aesthetic === 'brutalist' ? '2px solid #000'
-                  : theme.fillMode === 'terminal' ? '1px solid #00ff41'
-                  : theme.fillMode === 'neon' ? `1px solid ${fg}`
-                  : `1.5px solid ${darken(fill, 0.35)}`,
-                background: theme.aesthetic === 'brutalist' ? '#fff'
-                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
-                  : theme.fillMode === 'neon' ? 'rgba(255,255,255,0.07)'
-                  : 'rgba(255,255,255,.55)',
-                color: theme.aesthetic === 'brutalist' ? '#000'
-                  : theme.fillMode === 'terminal' ? '#00ff41'
-                  : theme.fillMode === 'neon' ? fg
-                  : darken(fill, 0.5),
-                cursor: 'pointer',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : 'none',
-                transition: 'transform .1s, background .1s',
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#ffeb00'
-                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.25)'
-                  : '#fff';
-                e.currentTarget.style.transform = 'scale(1.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#fff'
-                  : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
-                  : 'rgba(255,255,255,.55)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12">
-                <path d="M2.5 6.5 L5 9 L9.5 3.5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Complete tick is absolutely positioned so the title always sits at
+          the top of the block regardless of whether the tick is showing. */}
+      {isActionable && !editing && !task.waiting && (
+        <button
+          onPointerDown={(e) => { e.stopPropagation(); }}
+          onClick={(e) => { e.stopPropagation(); onComplete(); }}
+          title="Mark complete"
+          aria-label="Mark complete"
+          style={{
+            position: 'absolute',
+            top: 6, right: 6,
+            width: 24, height: 24,
+            borderRadius: (theme.aesthetic === 'brutalist' || theme.aesthetic === 'terminal') ? 0 : '50%',
+            border: theme.aesthetic === 'brutalist' ? '2px solid #000'
+              : theme.fillMode === 'terminal' ? '1px solid #00ff41'
+              : theme.fillMode === 'neon' ? `1px solid ${fg}`
+              : `1.5px solid ${darken(fill, 0.35)}`,
+            background: theme.aesthetic === 'brutalist' ? '#fff'
+              : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
+              : theme.fillMode === 'neon' ? 'rgba(255,255,255,0.07)'
+              : 'rgba(255,255,255,.55)',
+            color: theme.aesthetic === 'brutalist' ? '#000'
+              : theme.fillMode === 'terminal' ? '#00ff41'
+              : theme.fillMode === 'neon' ? fg
+              : darken(fill, 0.5),
+            cursor: 'pointer',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: theme.aesthetic === 'brutalist' ? '2px 2px 0 #000' : 'none',
+            transition: 'transform .1s, background .1s',
+            flexShrink: 0,
+            zIndex: 2,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#ffeb00'
+              : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.25)'
+              : '#fff';
+            e.currentTarget.style.transform = 'scale(1.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = theme.aesthetic === 'brutalist' ? '#fff'
+              : theme.fillMode === 'terminal' ? 'rgba(0,255,65,0.1)'
+              : 'rgba(255,255,255,.55)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <path d="M2.5 6.5 L5 9 L9.5 3.5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
 
       {editing ? (
         <input
@@ -1315,7 +1316,6 @@ function Block({
             if (e.key === 'Escape') { e.preventDefault(); onCancelEdit(); }
           }}
           style={{
-            marginTop: 2,
             background: 'rgba(255,255,255,.5)',
             border: 'none',
             outline: '2px solid rgba(0,0,0,.4)',
@@ -1329,14 +1329,15 @@ function Block({
         />
       ) : (
         <div style={{
-          marginTop: 4,
           fontSize: Math.max(11, Math.min(15, body.h * 0.16)),
           lineHeight: 1.2,
           textWrap: 'pretty',
           flex: 1,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          paddingRight: 0,
+          // Reserve space on the right for the actionable tick so wrapped
+          // titles don't slide under it.
+          paddingRight: isActionable && !task.waiting ? 28 : 0,
         }}>
           {task.title}
         </div>
@@ -2339,6 +2340,9 @@ function Scene() {
   const [storageReady, setStorageReady] = React.useState(false);
   const [welcomeOpen, setWelcomeOpen] = React.useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = React.useState(false);
+  // Last colour the user explicitly picked (via the block context menu) —
+  // becomes the default for the next new task. Persisted in storage.
+  const [lastColor, setLastColor] = React.useState(null);
   const palette = React.useMemo(() => {
     const base = PALETTES.find((p) => p.id === t.paletteId) || PALETTES[0];
     const overrides = customSwatches[base.id];
@@ -2406,6 +2410,9 @@ function Scene() {
       }
       if (stored.tweaks && typeof stored.tweaks === 'object') {
         setTweak(stored.tweaks);
+      }
+      if (typeof stored.lastColor === 'string') {
+        setLastColor(stored.lastColor);
       }
     } else {
       const firstId = newProjectId();
@@ -2494,6 +2501,7 @@ function Scene() {
         customSwatches,
         tweaks: t,
         welcomeSeen: !welcomeOpen,
+        lastColor,
       });
     };
     const interval = setInterval(flush, 1000);
@@ -2512,7 +2520,7 @@ function Scene() {
       window.removeEventListener('beforeunload', onUnload);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [storageReady, projects, activeProjectId, groups, customSwatches, t, welcomeOpen]);
+  }, [storageReady, projects, activeProjectId, groups, customSwatches, t, welcomeOpen, lastColor]);
 
   React.useEffect(() => {
     let raf;
@@ -2785,7 +2793,8 @@ function Scene() {
 
   const addTask = (overrides = {}) => {
     const id = nextId();
-    const defaultColor = palette.swatches[0];
+    // Default to the most recently picked colour (falls back to first swatch).
+    const defaultColor = lastColor || palette.swatches[0];
     const task = {
       id,
       title: overrides.title || 'New task',
@@ -2875,6 +2884,7 @@ function Scene() {
       customSwatches,
       tweaks: t,
       welcomeSeen: !welcomeOpen,
+      lastColor,
     });
   };
 
@@ -2894,6 +2904,7 @@ function Scene() {
       customSwatches,
       tweaks: t,
       welcomeSeen: !welcomeOpen,
+      lastColor,
     });
     switchProject(id);
   };
@@ -2988,6 +2999,7 @@ function Scene() {
         { divider: true },
         { type: 'swatches', colors: palette.swatches, current: task.color, onPick: (c) => {
           ids.forEach((id) => updateTask(id, { color: c }));
+          setLastColor(c);
           forceRender();
         }},
         { divider: true },
