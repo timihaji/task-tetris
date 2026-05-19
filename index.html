@@ -1769,9 +1769,36 @@ const DEFAULT_W = 250, DEFAULT_H = 100;
 
 let __idc = 1000;
 const nextId = () => 't' + (++__idc);
+const newProjectId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 const snapTo = (v, g) => Math.round(v / g) * g;
 const snapMinTo = (v, g) => Math.max(g, Math.round(v / g) * g);
+
+// ── Persistent storage ───────────────────────────────────────────────────────
+// All board state — projects, active project, per-project tasks/groups,
+// palette swatch overrides, tweaks, and the welcome-seen flag — lives in one
+// localStorage key. Saves are debounced so dragging doesn't thrash disk.
+const STORAGE_KEY = 'task-tetris-v1';
+
+function loadStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveStorage(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // Storage full or disabled — fail quietly; in-memory state still works.
+  }
+}
 
 // ── Gear icon SVG ────────────────────────────────────────────────────────────
 function GearIcon({ size = 16, color = 'currentColor' }) {
@@ -2304,6 +2331,14 @@ function Scene() {
 
   const [customSwatches, setCustomSwatches] = React.useState({});
   const [importError, setImportError] = React.useState('');
+
+  // Projects + storage. `storageReady` gates auto-save so the first load
+  // doesn't immediately overwrite localStorage with empty state.
+  const [projects, setProjects] = React.useState([]);
+  const [activeProjectId, setActiveProjectId] = React.useState(null);
+  const [storageReady, setStorageReady] = React.useState(false);
+  const [welcomeOpen, setWelcomeOpen] = React.useState(false);
+  const [projectMenuOpen, setProjectMenuOpen] = React.useState(false);
   const palette = React.useMemo(() => {
     const base = PALETTES.find((p) => p.id === t.paletteId) || PALETTES[0];
     const overrides = customSwatches[base.id];
@@ -2356,7 +2391,45 @@ function Scene() {
     cameraRef.current = { x: 0, y: initCamY };
     setCameraPos({ x: 0, y: initCamY });
 
-    // Board starts empty; user adds tasks via + Task, Alt+N, right-click, or double-click.
+    // Restore from localStorage, or seed a fresh first-time experience.
+    const stored = loadStorage();
+    let projectsList, activeId, projectData, welcomeSeen;
+    if (stored && Array.isArray(stored.projects) && stored.projects.length > 0) {
+      projectsList = stored.projects;
+      activeId = stored.activeProjectId && stored.projects.some((p) => p.id === stored.activeProjectId)
+        ? stored.activeProjectId
+        : stored.projects[0].id;
+      projectData = stored.projectData || {};
+      welcomeSeen = !!stored.welcomeSeen;
+      if (stored.customSwatches && typeof stored.customSwatches === 'object') {
+        setCustomSwatches(stored.customSwatches);
+      }
+      if (stored.tweaks && typeof stored.tweaks === 'object') {
+        setTweak(stored.tweaks);
+      }
+    } else {
+      const firstId = newProjectId();
+      projectsList = [{ id: firstId, name: 'My board', createdAt: new Date().toISOString() }];
+      activeId = firstId;
+      projectData = { [firstId]: { tasks: [], groups: [] } };
+      welcomeSeen = false;
+    }
+    setProjects(projectsList);
+    setActiveProjectId(activeId);
+    // Load the active project's bodies into the physics world.
+    const data = projectData[activeId] || { tasks: [], groups: [] };
+    let maxIdNum = 1000;
+    for (const tk of data.tasks) {
+      const { x = 0, y = 0, w: bw = DEFAULT_W, h: bh = DEFAULT_H, ...rest } = tk;
+      tasksRef.current.set(tk.id, rest);
+      world.add({ id: tk.id, x, y, w: bw, h: bh });
+      const n = parseInt(String(tk.id).replace(/^t/, ''), 10);
+      if (Number.isFinite(n) && n > maxIdNum) maxIdNum = n;
+    }
+    __idc = maxIdNum;
+    setGroups(Array.isArray(data.groups) ? data.groups : []);
+    setWelcomeOpen(!welcomeSeen);
+    setStorageReady(true);
   }, []);
 
   React.useEffect(() => {
@@ -2385,6 +2458,61 @@ function Scene() {
     ro.observe(sceneRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // ── Auto-save ──────────────────────────────────────────────────────────────
+  // The physics loop mutates body positions every frame, so we can't bind save
+  // to React state changes alone. Instead: serialise the world every second
+  // and on tab close. Cheap (< 50 KB for typical boards).
+  React.useEffect(() => {
+    if (!storageReady) return;
+    const flush = () => {
+      const world = worldRef.current;
+      const activeTasks = [];
+      if (world) {
+        for (const [id, body] of world.bodies.entries()) {
+          const tk = tasksRef.current.get(id);
+          if (!tk) continue;
+          activeTasks.push({ ...tk, x: body.x, y: body.y, w: body.w, h: body.h });
+        }
+      }
+      // Merge fresh active-project state with stored data for the inactive ones.
+      const prior = loadStorage() || {};
+      const priorData = prior.projectData || {};
+      const projectData = { ...priorData };
+      if (activeProjectId) {
+        projectData[activeProjectId] = { tasks: activeTasks, groups };
+      }
+      // Drop project data for projects that no longer exist.
+      for (const id of Object.keys(projectData)) {
+        if (!projects.some((p) => p.id === id)) delete projectData[id];
+      }
+      saveStorage({
+        version: 1,
+        projects,
+        activeProjectId,
+        projectData,
+        customSwatches,
+        tweaks: t,
+        welcomeSeen: !welcomeOpen,
+      });
+    };
+    const interval = setInterval(flush, 1000);
+    const onUnload = () => flush();
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('beforeunload', onUnload);
+    document.addEventListener('visibilitychange', onVisibility);
+    // Note: do NOT flush from cleanup. Cleanup fires whenever any dep changes
+    // (including activeProjectId during switchProject), and closure-captured
+    // values would point at the *old* active project while the world has
+    // already been swapped to the new one — that combination silently wipes
+    // the old project's tasks. The periodic interval + unload/visibility
+    // listeners cover persistence; switchProject itself saves explicitly.
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', onUnload);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [storageReady, projects, activeProjectId, groups, customSwatches, t, welcomeOpen]);
 
   React.useEffect(() => {
     let raf;
@@ -2694,6 +2822,95 @@ function Scene() {
     for (const id of [...w.bodies.keys()]) w.remove(id);
     tasksRef.current.clear();
     setGroups([]); setSelectedIds(new Set());
+  };
+
+  // ── Project switching ──────────────────────────────────────────────────────
+  // Snapshot the active project's bodies into storage before swapping, then
+  // wipe the world and rebuild it from the target project's saved tasks.
+  const switchProject = (targetId) => {
+    if (targetId === activeProjectId) return;
+    const world = worldRef.current;
+    if (!world) return;
+    // Snapshot current project so the swap doesn't lose in-progress changes.
+    const activeTasks = [];
+    for (const [id, body] of world.bodies.entries()) {
+      const tk = tasksRef.current.get(id);
+      if (!tk) continue;
+      activeTasks.push({ ...tk, x: body.x, y: body.y, w: body.w, h: body.h });
+    }
+    const prior = loadStorage() || {};
+    const projectData = { ...(prior.projectData || {}) };
+    if (activeProjectId) projectData[activeProjectId] = { tasks: activeTasks, groups };
+    // Tear down current world.
+    for (const id of [...world.bodies.keys()]) world.remove(id);
+    tasksRef.current.clear();
+    setSelectedIds(new Set());
+    setEditingId(null);
+    setCompleting(new Set());
+    setDeleting(new Set());
+    // Load target project.
+    const data = projectData[targetId] || { tasks: [], groups: [] };
+    let maxIdNum = __idc;
+    for (const tk of data.tasks) {
+      const { x = 0, y = 0, w: bw = DEFAULT_W, h: bh = DEFAULT_H, ...rest } = tk;
+      tasksRef.current.set(tk.id, rest);
+      world.add({ id: tk.id, x, y, w: bw, h: bh });
+      const n = parseInt(String(tk.id).replace(/^t/, ''), 10);
+      if (Number.isFinite(n) && n > maxIdNum) maxIdNum = n;
+    }
+    __idc = maxIdNum;
+    setGroups(Array.isArray(data.groups) ? data.groups : []);
+    setActiveProjectId(targetId);
+    // Persist immediately so a refresh right after a switch lands on the new
+    // project. Use whichever projects list is freshest — storage may have a
+    // newer one if this call came from createProject() (which just appended).
+    const projectsForSave = (prior.projects && prior.projects.length >= projects.length)
+      ? prior.projects
+      : projects;
+    saveStorage({
+      version: 1,
+      projects: projectsForSave,
+      activeProjectId: targetId,
+      projectData,
+      customSwatches,
+      tweaks: t,
+      welcomeSeen: !welcomeOpen,
+    });
+  };
+
+  const createProject = (name) => {
+    const id = newProjectId();
+    const nextProjects = [...projects, { id, name: (name || 'Untitled').slice(0, 80), createdAt: new Date().toISOString() }];
+    setProjects(nextProjects);
+    // Persist the new projects list to storage first so switchProject can read
+    // it back (avoiding its stale `projects` closure).
+    const prior = loadStorage() || {};
+    const projectData = { ...(prior.projectData || {}), [id]: { tasks: [], groups: [] } };
+    saveStorage({
+      version: 1,
+      projects: nextProjects,
+      activeProjectId,
+      projectData,
+      customSwatches,
+      tweaks: t,
+      welcomeSeen: !welcomeOpen,
+    });
+    switchProject(id);
+  };
+
+  const renameProject = (id, name) => {
+    setProjects((ps) => ps.map((p) => p.id === id ? { ...p, name: (name || 'Untitled').slice(0, 80) } : p));
+  };
+
+  const deleteProject = (id) => {
+    if (projects.length <= 1) return; // Always keep at least one.
+    const remaining = projects.filter((p) => p.id !== id);
+    if (id === activeProjectId) {
+      // Switch to the first remaining project before removing.
+      const next = remaining[0].id;
+      switchProject(next);
+    }
+    setProjects(remaining);
   };
 
   const handleExport = () => {
@@ -3089,15 +3306,39 @@ function Scene() {
         zIndex: 200,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto', minWidth: 0 }}>
-          {!compact && (
-            <div style={{
-              fontSize: 13, fontWeight: 700, letterSpacing: '0.04em',
-              color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(20,18,12,0.85)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }} title="Ship the new pricing page">
-              <span style={{ opacity: 0.45 }}>Project ·</span> Ship the new pricing page
-            </div>
-          )}
+          {(() => {
+            const active = projects.find((p) => p.id === activeProjectId);
+            const name = active ? active.name : '—';
+            return (
+              <button
+                onClick={() => setProjectMenuOpen((v) => !v)}
+                title={`Switch project (${projects.length} total)`}
+                aria-label="Switch project"
+                style={{
+                  appearance: 'none',
+                  background: projectMenuOpen
+                    ? (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)')
+                    : 'transparent',
+                  border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.topBarBorder}` : `0.5px solid transparent`,
+                  borderRadius: theme.aesthetic === 'brutalist' ? 0 : 7,
+                  color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(20,18,12,0.85)',
+                  fontFamily: theme.blockFontFamily,
+                  fontSize: 13, fontWeight: 700, letterSpacing: '0.04em',
+                  padding: '6px 10px',
+                  cursor: 'default',
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  minWidth: 0,
+                  maxWidth: compact ? 180 : 320,
+                }}
+              >
+                {!compact && <span style={{ opacity: 0.45 }}>Project ·</span>}
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{name}</span>
+                <svg width="9" height="9" viewBox="0 0 12 12" style={{ flexShrink: 0, opacity: 0.55 }}>
+                  <path d="M2 4 L6 8 L10 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            );
+          })()}
           <div style={{
             fontSize: 10.5, padding: '3px 8px',
             background: theme.chipBg, color: theme.chipFg,
@@ -3192,6 +3433,29 @@ function Scene() {
         />
       )}
 
+      {projectMenuOpen && (
+        <ProjectSwitcher
+          theme={theme}
+          isDark={isDark}
+          projects={projects}
+          activeProjectId={activeProjectId}
+          onPick={(id) => { switchProject(id); setProjectMenuOpen(false); }}
+          onCreate={(name) => { createProject(name); setProjectMenuOpen(false); }}
+          onRename={renameProject}
+          onDelete={(id) => { deleteProject(id); }}
+          onClose={() => setProjectMenuOpen(false)}
+        />
+      )}
+
+      {welcomeOpen && (
+        <WelcomeOverlay
+          theme={theme}
+          isDark={isDark}
+          newTaskShortcut={newTaskShortcut}
+          onClose={() => setWelcomeOpen(false)}
+        />
+      )}
+
       {/* TweaksPanel still wired up (toolbar toggle), but empty — settings live in the gear page */}
       <TweaksPanel title="Tweaks" />
     </div>
@@ -3241,6 +3505,304 @@ function PaletteSwatchPreview({ palette }) {
         <span key={i} style={{ width: 4, height: 12, background: c }} />
       ))}
     </span>
+  );
+}
+
+// ── Project Switcher ─────────────────────────────────────────────────────────
+// Small floating panel anchored under the project name in the header. Click
+// outside to dismiss. Lists projects, lets the user create / rename / delete.
+
+function ProjectSwitcher({ theme, isDark, projects, activeProjectId, onPick, onCreate, onRename, onDelete, onClose }) {
+  const [editingId, setEditingId] = React.useState(null);
+  const [creating, setCreating] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const inputRef = React.useRef(null);
+  const panelRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const onDown = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [onClose]);
+
+  React.useEffect(() => {
+    if (creating && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [creating]);
+
+  const divider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const subText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+
+  return (
+    <div
+      ref={panelRef}
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        top: 52, left: 12,
+        width: 280,
+        background: theme.panelBg,
+        backdropFilter: 'blur(20px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+        color: theme.panelText,
+        border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+        borderRadius: theme.aesthetic === 'brutalist' ? 0 : 10,
+        boxShadow: theme.aesthetic === 'brutalist' ? '4px 4px 0 #000' : '0 16px 50px rgba(0,0,0,0.25)',
+        fontFamily: theme.blockFontFamily,
+        fontSize: 12,
+        zIndex: 1100,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{
+        padding: '10px 14px 8px',
+        fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+        color: subText,
+        borderBottom: `1px solid ${divider}`,
+      }}>
+        Projects ({projects.length})
+      </div>
+
+      <div style={{ maxHeight: 280, overflowY: 'auto', padding: 4 }}>
+        {projects.map((p) => {
+          const active = p.id === activeProjectId;
+          const isEditing = editingId === p.id;
+          return (
+            <div
+              key={p.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '6px 8px',
+                borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+                background: active ? (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)') : 'transparent',
+              }}
+            >
+              {isEditing ? (
+                <input
+                  autoFocus
+                  defaultValue={p.name}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { onRename(p.id, e.currentTarget.value); setEditingId(null); }
+                    if (e.key === 'Escape') { setEditingId(null); }
+                  }}
+                  onBlur={(e) => { onRename(p.id, e.currentTarget.value); setEditingId(null); }}
+                  style={{
+                    flex: 1, minWidth: 0,
+                    background: 'transparent', border: 0, outline: 'none',
+                    color: 'inherit', font: 'inherit', fontSize: 12, fontWeight: 500,
+                    padding: '2px 4px',
+                  }}
+                />
+              ) : (
+                <button
+                  onClick={() => onPick(p.id)}
+                  style={{
+                    flex: 1, minWidth: 0,
+                    appearance: 'none', border: 0, background: 'transparent',
+                    color: 'inherit', font: 'inherit', textAlign: 'left',
+                    padding: '2px 4px',
+                    fontWeight: active ? 700 : 500,
+                    cursor: 'default',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}
+                  title={p.name}
+                >
+                  {active && <span style={{ marginRight: 6, color: theme.accentColor }}>●</span>}
+                  {p.name}
+                </button>
+              )}
+              {!isEditing && (
+                <>
+                  <button
+                    onClick={() => setEditingId(p.id)}
+                    title="Rename"
+                    style={{
+                      border: 0, background: 'transparent', color: 'inherit',
+                      cursor: 'default', padding: 4, opacity: 0.5,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M8.5 1.5 L10.5 3.5 L4 10 L1.5 10.5 L2 8 Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => onDelete(p.id)}
+                    disabled={projects.length <= 1}
+                    title={projects.length <= 1 ? 'Keep at least one project' : 'Delete'}
+                    style={{
+                      border: 0, background: 'transparent',
+                      color: 'inherit', cursor: projects.length <= 1 ? 'not-allowed' : 'default',
+                      padding: 4, opacity: projects.length <= 1 ? 0.2 : 0.5,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2.5 4 L9.5 4 M4 4 L4 2 L8 2 L8 4 M3.5 4 L4 10 L8 10 L8.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${divider}`, padding: 6 }}>
+        {creating ? (
+          <input
+            ref={inputRef}
+            value={newName}
+            placeholder="Project name…"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const name = newName.trim() || 'Untitled';
+                onCreate(name);
+                setCreating(false); setNewName('');
+              } else if (e.key === 'Escape') {
+                setCreating(false); setNewName('');
+              }
+            }}
+            onBlur={() => {
+              if (newName.trim()) onCreate(newName.trim());
+              setCreating(false); setNewName('');
+            }}
+            style={{
+              width: '100%',
+              background: 'transparent',
+              border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.panelBorder}`,
+              borderRadius: theme.aesthetic === 'brutalist' ? 0 : 5,
+              color: 'inherit', font: 'inherit', fontSize: 12,
+              outline: 'none',
+              padding: '6px 8px',
+              boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setCreating(true)}
+            style={{
+              width: '100%',
+              appearance: 'none',
+              border: 0,
+              background: 'transparent',
+              color: 'inherit', font: 'inherit',
+              fontSize: 12, fontWeight: 600,
+              textAlign: 'left',
+              padding: '6px 8px',
+              cursor: 'default',
+              borderRadius: theme.aesthetic === 'brutalist' ? 0 : 6,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            + New project
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Welcome Overlay ──────────────────────────────────────────────────────────
+// First-time onboarding. Shows on initial load when `welcomeSeen` is false in
+// storage. Dismisses on click outside, the close button, or "Get started".
+
+function WelcomeOverlay({ theme, isDark, newTaskShortcut, onClose }) {
+  const tips = [
+    { kbd: 'Double-click', text: 'on the canvas drops a task wherever you point.' },
+    { kbd: 'Drag empty space', text: 'pans the canvas. Shift-drag draws a lasso to select.' },
+    { kbd: 'Right-click', text: 'a block for colours, complete, group, delete. Right-click empty space for board actions.' },
+    { kbd: newTaskShortcut, text: 'drops a new task in the centre of view. Press Enter to confirm the title.' },
+    { kbd: 'Floor', text: 'is where the do-now zone lives — whatever lands on it gets a tick to complete.' },
+  ];
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        zIndex: 9000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: theme.blockFontFamily,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(520px, 92vw)',
+          background: theme.panelBg,
+          backdropFilter: 'blur(20px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+          border: theme.aesthetic === 'brutalist' ? `3px solid ${theme.panelBorder}` : `0.5px solid ${theme.panelBorder}`,
+          borderRadius: theme.aesthetic === 'brutalist' ? 0 : 14,
+          boxShadow: theme.aesthetic === 'brutalist' ? '8px 8px 0 #000' : '0 24px 80px rgba(0,0,0,0.35)',
+          color: theme.panelText,
+          padding: '24px 26px 22px',
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '0.01em', marginBottom: 4 }}>
+          Welcome to Task Tetris
+        </div>
+        <div style={{ fontSize: 12.5, opacity: 0.7, lineHeight: 1.5, marginBottom: 18 }}>
+          Tasks fall and stack. Whatever touches the floor is what you can do right now.
+          Here's the gist:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+          {tips.map((tip, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <span
+                style={{
+                  flexShrink: 0,
+                  padding: '3px 8px',
+                  background: theme.chipBg,
+                  color: theme.chipFg,
+                  borderRadius: theme.aesthetic === 'brutalist' ? 0 : 5,
+                  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.02em',
+                  whiteSpace: 'nowrap',
+                  minWidth: 100, textAlign: 'center',
+                }}
+              >
+                {tip.kbd}
+              </span>
+              <span style={{ fontSize: 12.5, opacity: 0.85, lineHeight: 1.45 }}>{tip.text}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 10.5, opacity: 0.5 }}>
+            Your boards save automatically to this browser.
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              appearance: 'none',
+              border: theme.aesthetic === 'brutalist' ? `2px solid ${theme.panelBorder}` : `1px solid ${theme.accentColor}`,
+              background: theme.accentColor,
+              color: isDark ? '#0a0e18' : '#fff',
+              borderRadius: theme.aesthetic === 'brutalist' ? 0 : 7,
+              padding: '8px 18px',
+              font: 'inherit',
+              fontSize: 12, fontWeight: 700,
+              letterSpacing: '0.02em',
+              cursor: 'default',
+              boxShadow: theme.aesthetic === 'brutalist' ? '3px 3px 0 #000' : 'none',
+            }}
+          >
+            Get started →
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
